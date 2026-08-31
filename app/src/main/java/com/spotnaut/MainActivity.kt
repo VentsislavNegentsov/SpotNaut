@@ -32,7 +32,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -83,7 +83,7 @@ import retrofit2.http.Url
 import java.util.concurrent.TimeUnit
 import kotlin.math.abs
 
-// --- 1. Модели за данни ---
+// --- 1. Data Models & Expanded Category Taxonomy ---
 
 enum class AppLanguage { BG, EN }
 
@@ -158,7 +158,12 @@ enum class MainCategory(
     LEISURE("Отдих & Спорт", "Leisure & Sport", "🌳"),
     TRANSPORT("Транспорт", "Transport", "🚲"),
     ECO("Еко & Рециклиране", "Eco & Recycling", "♻️"),
-    CULTURE("Култура & Град", "Culture & City", "🎨");
+    CULTURE("Култура & Изкуство", "Culture & Art", "🎨"),
+    FOOD_DRINK("Храна & Напитки", "Food & Drink", "☕"),
+    HEALTH_SAFETY("Здраве & Спешни", "Health & Emergency", "🏥"),
+    SERVICES("Услуги & Финанси", "Services & Finance", "🏧"),
+    NATURE_OUTDOOR("Природа & Забележителности", "Nature & Sights", "🏔️"),
+    SHOPPING("Пазаруване", "Shopping", "🛒");
 
     fun label(lang: AppLanguage): String = if (lang == AppLanguage.BG) labelBg else labelEn
 }
@@ -172,28 +177,78 @@ enum class PoiCategory(
     val osmValue: String,
     val colorHex: String
 ) {
+    // 1. WATER & HYGIENE
     FOUNTAINS(MainCategory.WATER_HYGIENE, "Чешми", "Fountains", "🚰", "amenity", "drinking_water", "#0288D1"),
     TOILETS(MainCategory.WATER_HYGIENE, "Тоалетни", "Toilets", "🚻", "amenity", "toilets", "#7B1FA2"),
     SPRINGS(MainCategory.WATER_HYGIENE, "Извори", "Springs", "🏞️", "natural", "spring", "#00ACC1"),
+    SHOWERS(MainCategory.WATER_HYGIENE, "Душове", "Public Showers", "🚿", "amenity", "shower", "#0097A7"),
+    BATHS(MainCategory.WATER_HYGIENE, "Минерални бани", "Thermal Baths", "♨️", "amenity", "public_bath", "#00838F"),
 
+    // 2. LEISURE & SPORT
     BENCHES(MainCategory.LEISURE, "Пейки", "Benches", "🪑", "amenity", "bench", "#8D6E63"),
     PLAYGROUNDS(MainCategory.LEISURE, "Площадки", "Playgrounds", "🛝", "leisure", "playground", "#E91E63"),
     FITNESS(MainCategory.LEISURE, "Външен фитнес", "Outdoor Gym", "🏋️", "leisure", "fitness_station", "#4CAF50"),
-    DOG_PARKS(MainCategory.LEISURE, "Кучета", "Dog Parks", "🐕", "leisure", "dog_park", "#388E3C"),
+    DOG_PARKS(MainCategory.LEISURE, "Кучешки паркове", "Dog Parks", "🐕", "leisure", "dog_park", "#388E3C"),
     PICNIC(MainCategory.LEISURE, "Пикник", "Picnic Areas", "🧺", "leisure", "picnic_site", "#FF9800"),
-    VIEWPOINTS(MainCategory.LEISURE, "Гледки", "Viewpoints", "🌅", "tourism", "viewpoint", "#9C27B0"),
+    BBQ(MainCategory.LEISURE, "Барбекю", "BBQ Spots", "🍖", "amenity", "bbq", "#E65100"),
+    SKATE_PARK(MainCategory.LEISURE, "Скейт парк", "Skate Park", "🛹", "leisure", "skate_park", "#795548"),
+    SPORTS_PITCH(MainCategory.LEISURE, "Спортно игрище", "Sports Pitch", "⚽", "leisure", "pitch", "#2E7D32"),
 
+    // 3. TRANSPORT & MOBILITY
     EV_CHARGING(MainCategory.TRANSPORT, "EV Зарядни", "EV Chargers", "⚡", "amenity", "charging_station", "#FBC02D"),
     BIKE_PARKING(MainCategory.TRANSPORT, "Велостойки", "Bike Parking", "🚲", "amenity", "bicycle_parking", "#009688"),
     BIKE_RENTAL(MainCategory.TRANSPORT, "Колела под наем", "Bike Rental", "🚴", "amenity", "bicycle_rental", "#00BCD4"),
     BIKE_REPAIR(MainCategory.TRANSPORT, "Велоремонт", "Bike Repair", "🔧", "amenity", "bike_repair_station", "#607D8B"),
+    BUS_STOP(MainCategory.TRANSPORT, "Автобусни спирки", "Bus Stops", "🚌", "highway", "bus_stop", "#1565C0"),
+    PARKING(MainCategory.TRANSPORT, "Паркинги", "Parking Spots", "🅿️", "amenity", "parking", "#1976D2"),
+    TAXI(MainCategory.TRANSPORT, "Такси стоянки", "Taxi Ranks", "🚕", "amenity", "taxi", "#F57F17"),
 
+    // 4. ECO & RECYCLING
     RECYCLING(MainCategory.ECO, "Рециклиране", "Recycling", "♻️", "amenity", "recycling", "#00796B"),
+    WASTE_BASKET(MainCategory.ECO, "Кошчета за боклук", "Trash Cans", "🗑️", "amenity", "waste_basket", "#455A64"),
+    CLOTHES_CONTAINER(MainCategory.ECO, "Дрехи рециклиране", "Clothes Recycling", "👕", "amenity", "waste_disposal", "#00897B"),
+    COMPOST(MainCategory.ECO, "Компост", "Compost", "🌱", "amenity", "compost", "#33691E"),
 
+    // 5. CULTURE & ART
     ART(MainCategory.CULTURE, "Стрийт Арт", "Street Art", "🎨", "tourism", "artwork", "#F57C00"),
-    BOOKCASE(MainCategory.CULTURE, "Книги", "Bookcases", "📚", "amenity", "public_bookcase", "#8D6E63"),
+    BOOKCASE(MainCategory.CULTURE, "Улични библиотеки", "Public Bookcases", "📚", "amenity", "public_bookcase", "#8D6E63"),
     PARCEL_LOCKER(MainCategory.CULTURE, "Шкафчета", "Parcel Lockers", "📦", "amenity", "parcel_locker", "#FF5722"),
-    MONUMENTS(MainCategory.CULTURE, "Паметници", "Monuments", "🗿", "historic", "monument", "#78909C");
+    MONUMENTS(MainCategory.CULTURE, "Паметници", "Monuments", "🗿", "historic", "monument", "#78909C"),
+    MUSEUM(MainCategory.CULTURE, "Музеи", "Museums", "🏛️", "tourism", "museum", "#5D4037"),
+    THEATRE(MainCategory.CULTURE, "Театри", "Theatres", "🎭", "amenity", "theatre", "#AD1457"),
+
+    // 6. FOOD & DRINK
+    CAFES(MainCategory.FOOD_DRINK, "Кафенета", "Cafes", "☕", "amenity", "cafe", "#6D4C41"),
+    RESTAURANTS(MainCategory.FOOD_DRINK, "Ресторанти", "Restaurants", "🍽️", "amenity", "restaurant", "#D84315"),
+    FAST_FOOD(MainCategory.FOOD_DRINK, "Бързо хранене", "Fast Food", "🍔", "amenity", "fast_food", "#EF6C00"),
+    PUB(MainCategory.FOOD_DRINK, "Пъбове & Барове", "Pubs & Bars", "🍺", "amenity", "pub", "#C62828"),
+    ICE_CREAM(MainCategory.FOOD_DRINK, "Сладолед", "Ice Cream", "🍦", "amenity", "ice_cream", "#F48FB1"),
+    BAKERY(MainCategory.FOOD_DRINK, "Пекарни", "Bakeries", "🥐", "shop", "bakery", "#A1887F"),
+
+    // 7. HEALTH & SAFETY
+    PHARMACY(MainCategory.HEALTH_SAFETY, "Аптеки", "Pharmacies", "💊", "amenity", "pharmacy", "#E53935"),
+    DEFIBRILLATOR(MainCategory.HEALTH_SAFETY, "Дефибрилатори (AED)", "AED Defibrillators", "🫀", "emergency", "defibrillator", "#D32F2F"),
+    HOSPITAL(MainCategory.HEALTH_SAFETY, "Болници", "Hospitals", "🏥", "amenity", "hospital", "#C62828"),
+    POLICE(MainCategory.HEALTH_SAFETY, "Полиция", "Police Stations", "👮", "amenity", "police", "#283593"),
+    FIRE_STATION(MainCategory.HEALTH_SAFETY, "Пожарна", "Fire Stations", "🚒", "amenity", "fire_station", "#B71C1C"),
+
+    // 8. SERVICES & FINANCE
+    ATM(MainCategory.SERVICES, "Банкомати", "ATMs", "🏧", "amenity", "atm", "#2E7D32"),
+    BANK(MainCategory.SERVICES, "Банкови клонове", "Banks", "🏦", "amenity", "bank", "#1B5E20"),
+    POST_OFFICE(MainCategory.SERVICES, "Пощенски клонове", "Post Offices", "📯", "amenity", "post_office", "#F9A825"),
+    VET(MainCategory.SERVICES, "Ветеринари", "Veterinary Clinics", "🐾", "amenity", "veterinary", "#8E24AA"),
+
+    // 9. NATURE & OUTDOORS
+    VIEWPOINTS(MainCategory.NATURE_OUTDOOR, "Панорамни гледки", "Viewpoints", "🌅", "tourism", "viewpoint", "#9C27B0"),
+    ATTRACTION(MainCategory.NATURE_OUTDOOR, "Туристически обект", "Attractions", "🎡", "tourism", "attraction", "#AB47BC"),
+    CAMPING(MainCategory.NATURE_OUTDOOR, "Къмпинг зони", "Campsites", "⛺", "tourism", "camp_site", "#558B2F"),
+    PEAK(MainCategory.NATURE_OUTDOOR, "Планински върхове", "Peaks", "⛰️", "natural", "peak", "#4E342E"),
+    INFORMATION(MainCategory.NATURE_OUTDOOR, "Инфо центрове", "Info Points", "ℹ️", "tourism", "information", "#0277BD"),
+
+    // 10. SHOPPING
+    SUPERMARKET(MainCategory.SHOPPING, "Супермаркети", "Supermarkets", "🛒", "shop", "supermarket", "#43A047"),
+    CONVENIENCE(MainCategory.SHOPPING, "Денонощни магазини", "Convenience Stores", "🏪", "shop", "convenience", "#388E3C"),
+    MALL(MainCategory.SHOPPING, "Търговски центрове", "Malls", "🏬", "shop", "mall", "#1B5E20");
 
     fun label(lang: AppLanguage): String = if (lang == AppLanguage.BG) labelBg else labelEn
 }
@@ -256,7 +311,6 @@ fun AutomotiveManeuverIcon(
 
         when {
             type == "arrive" -> {
-                // Иконка Пристигане (Финална цел)
                 val path = Path().apply {
                     moveTo(w * 0.5f, h * 0.8f)
                     lineTo(w * 0.5f, h * 0.25f)
@@ -265,7 +319,6 @@ fun AutomotiveManeuverIcon(
                 drawCircle(color = arrowColor, radius = w * 0.18f, center = Offset(w * 0.5f, h * 0.25f))
             }
             type == "roundabout" || type == "rotary" -> {
-                // Кръгово движение
                 drawArc(
                     color = arrowColor,
                     startAngle = 40f,
@@ -283,7 +336,6 @@ fun AutomotiveManeuverIcon(
                 drawPath(arrowHead, arrowColor, style = stroke)
             }
             mod == "uturn" -> {
-                // Обратен завой (U-Turn)
                 val path = Path().apply {
                     moveTo(w * 0.7f, h * 0.85f)
                     lineTo(w * 0.7f, h * 0.45f)
@@ -299,7 +351,6 @@ fun AutomotiveManeuverIcon(
                 drawPath(arrowHead, arrowColor, style = stroke)
             }
             mod == "right" -> {
-                // Завой надясно 90°
                 val bgPath = Path().apply {
                     moveTo(w * 0.3f, h * 0.85f)
                     lineTo(w * 0.3f, h * 0.2f)
@@ -320,7 +371,6 @@ fun AutomotiveManeuverIcon(
                 drawPath(arrowHead, arrowColor, style = stroke)
             }
             mod == "left" -> {
-                // Завой наляво 90°
                 val bgPath = Path().apply {
                     moveTo(w * 0.7f, h * 0.85f)
                     lineTo(w * 0.7f, h * 0.2f)
@@ -341,7 +391,6 @@ fun AutomotiveManeuverIcon(
                 drawPath(arrowHead, arrowColor, style = stroke)
             }
             mod == "slight right" -> {
-                // Леко надясно (45°)
                 val mainPath = Path().apply {
                     moveTo(w * 0.35f, h * 0.85f)
                     lineTo(w * 0.35f, h * 0.55f)
@@ -356,7 +405,6 @@ fun AutomotiveManeuverIcon(
                 drawPath(arrowHead, arrowColor, style = stroke)
             }
             mod == "slight left" -> {
-                // Леко наляво (45°)
                 val mainPath = Path().apply {
                     moveTo(w * 0.65f, h * 0.85f)
                     lineTo(w * 0.65f, h * 0.55f)
@@ -371,7 +419,6 @@ fun AutomotiveManeuverIcon(
                 drawPath(arrowHead, arrowColor, style = stroke)
             }
             mod == "sharp right" -> {
-                // Остър десен завой
                 val mainPath = Path().apply {
                     moveTo(w * 0.35f, h * 0.85f)
                     lineTo(w * 0.35f, h * 0.35f)
@@ -386,7 +433,6 @@ fun AutomotiveManeuverIcon(
                 drawPath(arrowHead, arrowColor, style = stroke)
             }
             mod == "sharp left" -> {
-                // Остър ляв завой
                 val mainPath = Path().apply {
                     moveTo(w * 0.65f, h * 0.85f)
                     lineTo(w * 0.65f, h * 0.35f)
@@ -401,7 +447,6 @@ fun AutomotiveManeuverIcon(
                 drawPath(arrowHead, arrowColor, style = stroke)
             }
             type == "fork" -> {
-                // Разклонение (Fork)
                 val leftFork = Path().apply {
                     moveTo(w * 0.5f, h * 0.85f)
                     lineTo(w * 0.5f, h * 0.55f)
@@ -417,7 +462,6 @@ fun AutomotiveManeuverIcon(
                 drawPath(rightFork, if (isRight) arrowColor else secondaryColor, style = stroke)
             }
             else -> {
-                // Продължете направо (Straight)
                 val mainPath = Path().apply {
                     moveTo(w * 0.5f, h * 0.85f)
                     lineTo(w * 0.5f, h * 0.22f)
@@ -434,7 +478,7 @@ fun AutomotiveManeuverIcon(
     }
 }
 
-// --- 3. Помощни функции ---
+// --- 3. Helper Functions ---
 
 suspend fun fetchStreetRouteDetails(start: GeoPoint, target: GeoPoint): NavigationData = withContext(Dispatchers.IO) {
     try {
@@ -454,7 +498,7 @@ suspend fun fetchStreetRouteDetails(start: GeoPoint, target: GeoPoint): Navigati
 
         NavigationData(coords, steps)
     } catch (e: Exception) {
-        Log.e("SpotNaut", "Грешка при извличане на маршрут", e)
+        Log.e("SpotNaut", "Route fetching error", e)
         NavigationData(listOf(start, target), emptyList())
     }
 }
@@ -507,13 +551,12 @@ fun getManeuverText(step: OsrmStep?, lang: AppLanguage): String {
         else -> if (lang == AppLanguage.BG) "Продължете напред" else "Continue straight"
     }
 
-    return if (streetName.isBlank()) text else "$text по $streetName"
+    return if (streetName.isBlank()) text else "$text po $streetName"
 }
 
 fun updateZoomBasedOnSpeed(mapView: MapView, speedMps: Float) {
     val speedKmH = if (speedMps <= 0f) 0f else speedMps * 3.6f
 
-    // 0 км/ч (покой на бюро / изчакване) -> Максимален Zoom 18.5
     val targetZoom = when {
         speedKmH < 5f -> 18.5
         speedKmH < 25f -> 17.0
@@ -627,7 +670,7 @@ private fun openGoogleMaps(context: Context, target: GeoPoint, label: String) {
     }
 }
 
-// --- 4. Главен Activity ---
+// --- 4. Main Activity ---
 
 class MainActivity : ComponentActivity() {
     @SuppressLint("SourceLockedOrientationActivity")
@@ -643,7 +686,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-// --- 5. UI Компоненти ---
+// --- 5. UI Screen & Left Sidebar Layout ---
 
 @Composable
 fun MainScreen() {
@@ -682,6 +725,7 @@ fun MainScreen() {
         var selectedTargetDetails by remember { mutableStateOf<String?>(null) }
 
         var isGuidanceActive by remember { mutableStateOf(false) }
+        var isSidebarExpanded by remember { mutableStateOf(true) }
 
         var rawRoutePoints by remember { mutableStateOf<List<GeoPoint>>(emptyList()) }
         var displayRoutePoints by remember { mutableStateOf<List<GeoPoint>>(emptyList()) }
@@ -768,7 +812,7 @@ fun MainScreen() {
             onDispose { locationManager.removeUpdates(listener) }
         }
 
-        // Компас
+        // Compass / Orientation Sensor
         val sensorManager = remember { context.getSystemService(Context.SENSOR_SERVICE) as SensorManager }
         val rotationSensor = remember { sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR) }
 
@@ -831,12 +875,9 @@ fun MainScreen() {
             }
         }
 
-        // --- МОМЕНТАЛНО ИМАЖИРАНЕ ПРИ СТАРТ НА НАВИГАЦИЯ ---
         LaunchedEffect(isGuidanceActive) {
             if (isGuidanceActive) {
-                // Веднага при пускане на навигацията форсираме Zoom 18.5 (покой / стартова позиция на бюро)
                 mapView.controller.zoomTo(18.5, 500L)
-
                 val userPoint = currentLocation?.let { GeoPoint(it.latitude, it.longitude) }
                     ?: myLocationOverlay.myLocation
                     ?: getUserLocation(context)?.let { GeoPoint(it.latitude, it.longitude) }
@@ -845,7 +886,6 @@ fun MainScreen() {
             }
         }
 
-        // --- Двигател за Навигация в реално време ---
         LaunchedEffect(currentLocation, isGuidanceActive) {
             val loc = currentLocation
             if (isGuidanceActive && loc != null) {
@@ -871,7 +911,6 @@ fun MainScreen() {
             }
         }
 
-        // Зареждане на маршрута при първоначално активиране
         LaunchedEffect(isGuidanceActive, selectedTargetGeoPoint) {
             if (isGuidanceActive && selectedTargetGeoPoint != null) {
                 val userPoint = currentLocation?.let { GeoPoint(it.latitude, it.longitude) }
@@ -1083,7 +1122,46 @@ fun MainScreen() {
                 modifier = Modifier.fillMaxSize()
             )
 
-            // --- Automotive Navigation Табела със стрелка ---
+            // Top Menu Overflow Button
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .statusBarsPadding()
+                    .padding(top = 8.dp, end = 8.dp)
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    shadowElevation = 8.dp,
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)
+                ) {
+                    IconButton(onClick = { showMenu = true }) {
+                        Text("⋮", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                DropdownMenu(
+                    expanded = showMenu,
+                    onDismissRequest = { showMenu = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text(if (currentLanguage == AppLanguage.BG) "За приложението" else "About") },
+                        onClick = {
+                            showMenu = false
+                            showAboutDialog = true
+                        }
+                    )
+                    HorizontalDivider()
+                    DropdownMenuItem(
+                        text = { Text(if (currentLanguage == AppLanguage.BG) "Изход" else "Exit") },
+                        onClick = {
+                            showMenu = false
+                            (context as? Activity)?.finish()
+                        }
+                    )
+                }
+            }
+
+            // Automotive Guidance HUD Header Banner
             if (isGuidanceActive && selectedTargetGeoPoint != null) {
                 val loc = currentLocation ?: myLocationOverlay.lastFix
 
@@ -1111,13 +1189,13 @@ fun MainScreen() {
                     modifier = Modifier
                         .fillMaxWidth()
                         .statusBarsPadding()
-                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                        .padding(start = 14.dp, end = 60.dp, top = 8.dp),
                     shape = RoundedCornerShape(20.dp),
                     shadowElevation = 12.dp,
                     color = MaterialTheme.colorScheme.primaryContainer
                 ) {
                     Row(
-                        modifier = Modifier.padding(16.dp),
+                        modifier = Modifier.padding(14.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
@@ -1125,12 +1203,11 @@ fun MainScreen() {
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.weight(1f)
                         ) {
-                            // Canvas Автомобилна Стрелка
                             AutomotiveManeuverIcon(
                                 step = nextStep,
                                 modifier = Modifier
-                                    .size(54.dp)
-                                    .padding(end = 12.dp)
+                                    .size(50.dp)
+                                    .padding(end = 10.dp)
                             )
 
                             Column {
@@ -1143,12 +1220,12 @@ fun MainScreen() {
                                 Text(
                                     text = if (currentLanguage == AppLanguage.BG) "След $distText" else "In $distText",
                                     fontWeight = FontWeight.ExtraBold,
-                                    fontSize = 20.sp,
+                                    fontSize = 18.sp,
                                     color = MaterialTheme.colorScheme.onPrimaryContainer
                                 )
                                 Text(
                                     text = instructionText,
-                                    fontSize = 15.sp,
+                                    fontSize = 14.sp,
                                     fontWeight = FontWeight.Medium,
                                     color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.9f),
                                     maxLines = 2
@@ -1159,109 +1236,128 @@ fun MainScreen() {
                         Button(
                             onClick = { isGuidanceActive = false },
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                            shape = RoundedCornerShape(14.dp),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                            shape = RoundedCornerShape(12.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
                         ) {
-                            Text(if (currentLanguage == AppLanguage.BG) "Край" else "End", fontSize = 13.sp)
+                            Text(if (currentLanguage == AppLanguage.BG) "Край" else "End", fontSize = 12.sp)
                         }
                     }
                 }
             } else {
-                Column(
+                // --- Left Vertical Dual-Column Navigation Drawer Overlay ---
+                Row(
                     modifier = Modifier
-                        .fillMaxWidth()
+                        .align(Alignment.TopStart)
                         .statusBarsPadding()
-                        .padding(top = 8.dp)
+                        .padding(top = 8.dp, start = 8.dp)
+                        .fillMaxHeight(0.72f)
                 ) {
+                    // Drawer Toggle Button
                     Surface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp),
-                        shape = RoundedCornerShape(20.dp),
+                        onClick = { isSidebarExpanded = !isSidebarExpanded },
+                        shape = RoundedCornerShape(14.dp),
                         shadowElevation = 8.dp,
-                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
+                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+                        modifier = Modifier.padding(end = 4.dp)
                     ) {
-                        Column(modifier = Modifier.padding(vertical = 6.dp)) {
+                        Box(
+                            modifier = Modifier
+                                .width(36.dp)
+                                .fillMaxHeight(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = if (isSidebarExpanded) "◀" else "▶",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
 
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                LazyRow(
-                                    modifier = Modifier.weight(1f).padding(start = 8.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    if (isSidebarExpanded) {
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            shadowElevation = 10.dp,
+                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
+                            modifier = Modifier.width(280.dp)
+                        ) {
+                            Row(modifier = Modifier.fillMaxSize().padding(6.dp)) {
+                                // Column 1: Main Categories
+                                LazyColumn(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxHeight(),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
                                     items(MainCategory.entries) { mainCat ->
+                                        val isSelected = selectedMainCategory == mainCat
                                         FilterChip(
-                                            selected = selectedMainCategory == mainCat,
+                                            selected = isSelected,
                                             onClick = {
                                                 selectedMainCategory = mainCat
                                                 val firstSub = PoiCategory.entries.firstOrNull { it.mainCategory == mainCat }
                                                 if (firstSub != null) selectedPoiCategory = firstSub
                                             },
-                                            label = { Text("${mainCat.icon} ${mainCat.label(currentLanguage)}", fontSize = 13.sp) }
+                                            label = {
+                                                Text(
+                                                    text = "${mainCat.icon} ${mainCat.label(currentLanguage)}",
+                                                    fontSize = 11.sp,
+                                                    maxLines = 1,
+                                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                                )
+                                            },
+                                            modifier = Modifier.fillMaxWidth()
                                         )
                                     }
                                 }
 
-                                Box(modifier = Modifier.padding(end = 4.dp)) {
-                                    IconButton(onClick = { showMenu = true }) {
-                                        Text("⋮", fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                                    }
+                                VerticalDivider(
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
+                                )
 
-                                    DropdownMenu(
-                                        expanded = showMenu,
-                                        onDismissRequest = { showMenu = false }
-                                    ) {
-                                        DropdownMenuItem(
-                                            text = { Text(if (currentLanguage == AppLanguage.BG) "За приложението" else "About") },
-                                            onClick = {
-                                                showMenu = false
-                                                showAboutDialog = true
-                                            }
+                                // Column 2: Subcategories (Filtered by Main Selection)
+                                LazyColumn(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxHeight(),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    items(currentSubCategories) { poi ->
+                                        val isSelected = selectedPoiCategory == poi
+                                        FilterChip(
+                                            selected = isSelected,
+                                            onClick = { selectedPoiCategory = poi },
+                                            label = {
+                                                Text(
+                                                    text = "${poi.icon} ${poi.label(currentLanguage)}",
+                                                    fontSize = 11.sp,
+                                                    maxLines = 1,
+                                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                                )
+                                            },
+                                            modifier = Modifier.fillMaxWidth()
                                         )
-                                        HorizontalDivider()
-                                        DropdownMenuItem(
-                                            text = { Text(if (currentLanguage == AppLanguage.BG) "Изход" else "Exit") },
-                                            onClick = {
-                                                showMenu = false
-                                                (context as? Activity)?.finish()
-                                            }
-                                        )
                                     }
-                                }
-                            }
-
-                            HorizontalDivider(
-                                modifier = Modifier.padding(vertical = 4.dp, horizontal = 12.dp),
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
-                            )
-
-                            LazyRow(
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                items(currentSubCategories) { poi ->
-                                    FilterChip(
-                                        selected = selectedPoiCategory == poi,
-                                        onClick = { selectedPoiCategory = poi },
-                                        label = { Text("${poi.icon} ${poi.label(currentLanguage)}", fontSize = 12.sp) }
-                                    )
                                 }
                             }
                         }
                     }
-
-                    if (isLoading) {
-                        LinearProgressIndicator(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 24.dp, vertical = 6.dp)
-                        )
-                    }
                 }
             }
 
+            if (isLoading) {
+                LinearProgressIndicator(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .statusBarsPadding()
+                        .padding(top = 2.dp)
+                        .fillMaxWidth()
+                )
+            }
+
+            // Target Point Details Card
             if (selectedTargetGeoPoint != null && !isGuidanceActive) {
                 Surface(
                     modifier = Modifier
@@ -1310,9 +1406,7 @@ fun MainScreen() {
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Button(
-                                onClick = {
-                                    isGuidanceActive = true
-                                },
+                                onClick = { isGuidanceActive = true },
                                 modifier = Modifier.weight(1f),
                                 shape = RoundedCornerShape(14.dp)
                             ) {
@@ -1343,6 +1437,7 @@ fun MainScreen() {
                 }
             }
 
+            // Bottom Settings Toolbar
             Row(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -1482,9 +1577,10 @@ fun MainScreen() {
                                     SpotNaut е твоят интерактивен градски помощник.
 
                                     🌟 Възможности:
+                                    • 10 Основни Категории с над 40 подкатегории за градско търсене.
+                                    • Сгъваема 2-колона лява навигационна лента за бърз достъп.
                                     • Automotive Navigation с векторни стрелки за завои и кръгови кръстовища.
-                                    • Моментално форсиране на Zoom 18.5 при покой/старт на навигация.
-                                    • Динамично скъсяване на маршрутната линия.
+                                    • Динамично скъсяване на маршрутната линия при движение.
                                     • Автоматично преизчисляване при отклонение.
                                     • Компас и нощен режим.
                                     """.trimIndent()
@@ -1493,8 +1589,9 @@ fun MainScreen() {
                                     SpotNaut is your interactive urban companion.
 
                                     🌟 Features:
+                                    • 10 Main Categories with 40+ POI subcategories.
+                                    • Collapsible 2-column vertical navigation sidebar.
                                     • Automotive HUD Navigation with vector maneuver arrows.
-                                    • Instant Zoom 18.5 focus upon starting navigation.
                                     • Dynamic route polyline trimming.
                                     • Auto re-routing when off path.
                                     • Compass and Night Mode.
@@ -1516,7 +1613,7 @@ fun MainScreen() {
     }
 }
 
-// --- 6. Помощни функции за локация ---
+// --- 6. Helper Location Retrieval ---
 
 @SuppressLint("MissingPermission")
 private fun getUserLocation(context: Context): Location? {
