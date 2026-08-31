@@ -744,6 +744,10 @@ fun MainScreen() {
 
         var isGuidanceActive by remember { mutableStateOf(false) }
 
+        // Позиционни и GPS ориентационни променливи
+        var lastGpsBearing by remember { mutableFloatStateOf(0f) }
+        var hasGpsBearingEverBeenSet by remember { mutableStateOf(false) }
+
         var rawRoutePoints by remember { mutableStateOf<List<GeoPoint>>(emptyList()) }
         var displayRoutePoints by remember { mutableStateOf<List<GeoPoint>>(emptyList()) }
         var navigationSteps by remember { mutableStateOf<List<OsrmStep>>(emptyList()) }
@@ -833,6 +837,9 @@ fun MainScreen() {
         val sensorManager = remember { context.getSystemService(Context.SENSOR_SERVICE) as SensorManager }
         val rotationSensor = remember { sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR) }
 
+        val currentIsGuidanceActive by rememberUpdatedState(isGuidanceActive)
+        val currentHasGpsBearing by rememberUpdatedState(hasGpsBearingEverBeenSet)
+
         DisposableEffect(sensorManager, rotationSensor) {
             if (rotationSensor == null) {
                 onDispose { }
@@ -840,6 +847,9 @@ fun MainScreen() {
                 var lastAzimuth = 0f
                 val listener = object : SensorEventListener {
                     override fun onSensorChanged(event: SensorEvent?) {
+                        // ИГНОРИРАМЕ компаса, ако навигацията е активна И вече сме тръгнали поне веднъж с GPS
+                        if (currentIsGuidanceActive && currentHasGpsBearing) return
+
                         if (event?.sensor?.type == Sensor.TYPE_ROTATION_VECTOR) {
                             val rotationMatrix = FloatArray(9)
                             SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
@@ -894,12 +904,16 @@ fun MainScreen() {
 
         LaunchedEffect(isGuidanceActive) {
             if (isGuidanceActive) {
+                hasGpsBearingEverBeenSet = false
                 mapView.controller.zoomTo(18.5, 500L)
                 val userPoint = currentLocation?.let { GeoPoint(it.latitude, it.longitude) }
                     ?: myLocationOverlay.myLocation
                     ?: getUserLocation(context)?.let { GeoPoint(it.latitude, it.longitude) }
 
                 userPoint?.let { mapView.controller.animateTo(it) }
+            } else {
+                hasGpsBearingEverBeenSet = false
+                mapView.mapOrientation = 0f
             }
         }
 
@@ -911,6 +925,15 @@ fun MainScreen() {
                 mapView.controller.animateTo(userPoint)
                 val speedMps = if (loc.hasSpeed()) loc.speed else 0f
                 updateZoomBasedOnSpeed(mapView, speedMps)
+
+                // ЛОГИКА ЗА GPS ОРИЕНТАЦИЯТА ПРИ ДВИЖЕНИЕ / СПРАЛО ПОЛОЖЕНИЕ
+                if (loc.hasBearing() && speedMps > 0.5f) {
+                    lastGpsBearing = loc.bearing
+                    hasGpsBearingEverBeenSet = true
+                    mapView.mapOrientation = -loc.bearing
+                } else if (speedMps <= 0.5f && hasGpsBearingEverBeenSet) {
+                    mapView.mapOrientation = -lastGpsBearing
+                }
 
                 val now = System.currentTimeMillis()
                 if (selectedTargetGeoPoint != null && (rawRoutePoints.isEmpty() || isUserOffRoute(userPoint, rawRoutePoints))) {
