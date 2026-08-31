@@ -119,13 +119,6 @@ data class Element(
 
 data class OverpassResponse(val elements: List<Element>)
 
-data class CachedAreaResult(
-    val center: GeoPoint,
-    val radiusKm: Float,
-    val categoryName: String,
-    val elements: List<Element>
-)
-
 data class OsrmResponse(val routes: List<OsrmRoute>?)
 data class OsrmRoute(
     val geometry: OsrmGeometry?,
@@ -247,14 +240,11 @@ enum class PoiCategory(
 
 val OVERPASS_SERVERS = listOf(
     "https://overpass-api.de/api/interpreter",
-    "https://z.overpass-api.de/api/interpreter",
     "https://lz4.overpass-api.de/api/interpreter",
+    "https://z.overpass-api.de/api/interpreter",
     "https://overpass.kumi.systems/api/interpreter",
     "https://overpass.openstreetmap.fr/api/interpreter",
-    "https://overpass.openstreetmap.ru/api/interpreter",
-    "https://overpass.private.coffee/api/interpreter",
-    "https://overpass.osm.ch/api/interpreter",
-    "https://maps.mail.ru/osm/tools/overpass/api/interpreter"
+    "https://overpass.private.coffee/api/interpreter"
 )
 
 interface OverpassApi {
@@ -266,7 +256,8 @@ interface OverpassApi {
         fun create(): OverpassApi {
             val okHttpClient = OkHttpClient.Builder()
                 .connectTimeout(5, TimeUnit.SECONDS)
-                .readTimeout(5, TimeUnit.SECONDS)
+                .readTimeout(12, TimeUnit.SECONDS)
+                .writeTimeout(5, TimeUnit.SECONDS)
                 .addInterceptor { chain ->
                     val request = chain.request().newBuilder()
                         .header("User-Agent", "SpotNaut/1.0 (Android)")
@@ -286,24 +277,24 @@ interface OverpassApi {
 }
 
 // --- Local Disk Cache Helpers ---
-private fun getCacheFile(context: Context, lat: Double, lon: Double, radius: Float, categoryName: String): File {
+private fun getCacheFile(context: Context, lat: Double, lon: Double, radius: Float): File {
     val roundedLat = String.format("%.2f", lat).toDouble()
     val roundedLon = String.format("%.2f", lon).toDouble()
-    return File(context.filesDir, "osm_cache_${categoryName}_${roundedLat}_${roundedLon}_${radius}.json")
+    return File(context.filesDir, "osm_cache_all_${roundedLat}_${roundedLon}_${radius}.json")
 }
 
-private fun saveResponseToDisk(context: Context, center: GeoPoint, radius: Float, categoryName: String, response: OverpassResponse) {
+private fun saveResponseToDisk(context: Context, center: GeoPoint, radius: Float, response: OverpassResponse) {
     try {
-        val file = getCacheFile(context, center.latitude, center.longitude, radius, categoryName)
+        val file = getCacheFile(context, center.latitude, center.longitude, radius)
         file.writeText(Gson().toJson(response))
     } catch (e: Exception) {
         Log.e("SpotNaut", "Error saving cache", e)
     }
 }
 
-private fun loadResponseFromDisk(context: Context, center: GeoPoint, radius: Float, categoryName: String): OverpassResponse? {
+private fun loadResponseFromDisk(context: Context, center: GeoPoint, radius: Float): OverpassResponse? {
     try {
-        val file = getCacheFile(context, center.latitude, center.longitude, radius, categoryName)
+        val file = getCacheFile(context, center.latitude, center.longitude, radius)
         if (file.exists() && System.currentTimeMillis() - file.lastModified() < 86400000L) {
             return Gson().fromJson(file.readText(), OverpassResponse::class.java)
         }
@@ -311,6 +302,15 @@ private fun loadResponseFromDisk(context: Context, center: GeoPoint, radius: Flo
         Log.e("SpotNaut", "Error loading cache", e)
     }
     return null
+}
+
+// Изключително бърза пространствена заявка за всички OSM тагове наведнъж
+private fun buildAllCategoriesOverpassQuery(lat: Double, lon: Double, radiusMeters: Int): String {
+    return """
+        [out:json][timeout:10];
+        nwr(around:$radiusMeters,$lat,$lon)[~"^(amenity|leisure|highway|natural|tourism|historic|shop|emergency)$"~"."];
+        out center;
+    """.trimIndent()
 }
 
 // --- 2. Automotive Navigation Vector Arrow UI ---
@@ -665,18 +665,6 @@ private fun formatSpotDetails(category: PoiCategory, tags: Map<String, String>?,
     }.joinToString("\n")
 }
 
-private fun buildSingleOverpassQuery(lat: Double, lon: Double, radiusMeters: Int, cat: PoiCategory): String {
-    return """
-        [out:json][timeout:30];
-        (
-          node["${cat.osmKey}"="${cat.osmValue}"](around:$radiusMeters,$lat,$lon);
-          way["${cat.osmKey}"="${cat.osmValue}"](around:$radiusMeters,$lat,$lon);
-          relation["${cat.osmKey}"="${cat.osmValue}"](around:$radiusMeters,$lat,$lon);
-        );
-        out center;
-    """.trimIndent()
-}
-
 private fun openGoogleMaps(context: Context, target: GeoPoint, label: String) {
     val uri = Uri.parse("google.navigation:q=${target.latitude},${target.longitude}")
     val intent = Intent(Intent.ACTION_VIEW, uri).apply { setPackage("com.google.android.apps.maps") }
@@ -719,7 +707,9 @@ fun MainScreen() {
         val coroutineScope = rememberCoroutineScope()
         val api = remember { OverpassApi.create() }
 
-        val cacheList = remember { mutableStateListOf<CachedAreaResult>() }
+        var loadedAllElements by remember { mutableStateOf<List<Element>?>(null) }
+        var currentLoadedCenter by remember { mutableStateOf<GeoPoint?>(null) }
+        var currentLoadedRadius by remember { mutableFloatStateOf(0f) }
 
         var currentLanguage by remember { mutableStateOf(AppLanguage.BG) }
         var selectedMainCategory by remember { mutableStateOf(MainCategory.WATER_HYGIENE) }
@@ -744,7 +734,6 @@ fun MainScreen() {
 
         var isGuidanceActive by remember { mutableStateOf(false) }
 
-        // Позиционни и GPS ориентационни променливи
         var lastGpsBearing by remember { mutableFloatStateOf(0f) }
         var hasGpsBearingEverBeenSet by remember { mutableStateOf(false) }
 
@@ -833,7 +822,6 @@ fun MainScreen() {
             onDispose { locationManager.removeUpdates(listener) }
         }
 
-        // Compass / Orientation Sensor
         val sensorManager = remember { context.getSystemService(Context.SENSOR_SERVICE) as SensorManager }
         val rotationSensor = remember { sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR) }
 
@@ -847,7 +835,6 @@ fun MainScreen() {
                 var lastAzimuth = 0f
                 val listener = object : SensorEventListener {
                     override fun onSensorChanged(event: SensorEvent?) {
-                        // ИГНОРИРАМЕ компаса, ако навигацията е активна И вече сме тръгнали поне веднъж с GPS
                         if (currentIsGuidanceActive && currentHasGpsBearing) return
 
                         if (event?.sensor?.type == Sensor.TYPE_ROTATION_VECTOR) {
@@ -926,7 +913,6 @@ fun MainScreen() {
                 val speedMps = if (loc.hasSpeed()) loc.speed else 0f
                 updateZoomBasedOnSpeed(mapView, speedMps)
 
-                // ЛОГИКА ЗА GPS ОРИЕНТАЦИЯТА ПРИ ДВИЖЕНИЕ / СПРАЛО ПОЛОЖЕНИЕ
                 if (loc.hasBearing() && speedMps > 0.5f) {
                     lastGpsBearing = loc.bearing
                     hasGpsBearingEverBeenSet = true
@@ -996,7 +982,7 @@ fun MainScreen() {
         }
 
         LaunchedEffect(Unit) {
-            delay(3000)
+            delay(1500)
             isInitialSettling = false
         }
 
@@ -1074,21 +1060,24 @@ fun MainScreen() {
             mapView.overlays.add(circle)
             mapView.invalidate()
 
-            if (!forceReload) {
-                val cachedHit = cacheList.firstOrNull { cached ->
-                    cached.categoryName == category.name &&
-                            center.distanceToAsDouble(cached.center) < 500.0 &&
-                            abs(cached.radiusKm - radius) < 0.2f
-                }
-                if (cachedHit != null) {
-                    renderCategoryElements(cachedHit.elements, category, lang)
-                    return
-                }
+            val isMemoryHit = !forceReload &&
+                    loadedAllElements != null &&
+                    currentLoadedCenter != null &&
+                    currentLoadedCenter!!.distanceToAsDouble(center) < 300.0 &&
+                    abs(currentLoadedRadius - radius) < 0.1f
 
-                val diskCachedResponse = loadResponseFromDisk(context, center, radius, category.name)
-                if (diskCachedResponse != null) {
-                    cacheList.add(CachedAreaResult(center, radius, category.name, diskCachedResponse.elements))
-                    renderCategoryElements(diskCachedResponse.elements, category, lang)
+            if (isMemoryHit) {
+                renderCategoryElements(loadedAllElements!!, category, lang)
+                return
+            }
+
+            if (!forceReload) {
+                val diskResponse = loadResponseFromDisk(context, center, radius)
+                if (diskResponse != null) {
+                    loadedAllElements = diskResponse.elements
+                    currentLoadedCenter = center
+                    currentLoadedRadius = radius
+                    renderCategoryElements(diskResponse.elements, category, lang)
                     return
                 }
             }
@@ -1096,44 +1085,40 @@ fun MainScreen() {
             activeJob = coroutineScope.launch {
                 isLoading = true
                 try {
-                    val query = buildSingleOverpassQuery(center.latitude, center.longitude, radiusMeters, category)
+                    val query = buildAllCategoriesOverpassQuery(center.latitude, center.longitude, radiusMeters)
                     var bestResponse: OverpassResponse? = null
                     var lastException: Exception? = null
 
                     for (serverUrl in OVERPASS_SERVERS) {
-                        var attemptSuccess = false
-                        for (attempt in 1..2) {
-                            try {
-                                val res = api.getNodes(serverUrl, query)
-                                if (res.elements.isNotEmpty()) {
-                                    bestResponse = res
-                                    attemptSuccess = true
-                                    break
-                                } else if (bestResponse == null) {
-                                    bestResponse = res
-                                    attemptSuccess = true
-                                }
-                            } catch (e: Exception) {
-                                if (e is CancellationException) throw e
-                                lastException = e
-                                delay(800)
+                        try {
+                            val res = api.getNodes(serverUrl, query)
+                            if (res.elements.isNotEmpty()) {
+                                bestResponse = res
+                                break
+                            } else if (bestResponse == null) {
+                                bestResponse = res
                             }
+                        } catch (e: Exception) {
+                            if (e is CancellationException) throw e
+                            lastException = e
+                            Log.d("SpotNaut", "Server $serverUrl error. Switching...")
                         }
-                        if (attemptSuccess && bestResponse?.elements?.isNotEmpty() == true) break
                     }
 
-                    val finalResponse = bestResponse ?: throw (lastException ?: Exception("Network failure"))
+                    val finalResponse = bestResponse ?: throw (lastException ?: Exception("Мрежова грешка при свързване."))
 
-                    cacheList.add(CachedAreaResult(center, radius, category.name, finalResponse.elements))
-                    saveResponseToDisk(context, center, radius, category.name, finalResponse)
+                    loadedAllElements = finalResponse.elements
+                    currentLoadedCenter = center
+                    currentLoadedRadius = radius
 
+                    saveResponseToDisk(context, center, radius, finalResponse)
                     renderCategoryElements(finalResponse.elements, category, lang)
 
                 } catch (e: CancellationException) {
-                    // Canceled
+                    // Ignore cancellation
                 } catch (e: Exception) {
-                    Log.e("SpotNaut", "Error", e)
-                    Toast.makeText(context, e.localizedMessage, Toast.LENGTH_LONG).show()
+                    Log.e("SpotNaut", "Error fetching data", e)
+                    Toast.makeText(context, e.localizedMessage ?: "Грешка при зареждане", Toast.LENGTH_LONG).show()
                 } finally {
                     isLoading = false
                 }
@@ -1164,7 +1149,7 @@ fun MainScreen() {
 
         LaunchedEffect(selectedPoiCategory, searchCenterGeoPoint, radiusKm, currentLanguage, isInitialSettling) {
             if (isInitialSettling) return@LaunchedEffect
-            delay(300)
+            delay(100)
             loadOrFilterData(selectedPoiCategory, searchCenterGeoPoint, radiusKm, currentLanguage)
         }
 
@@ -1174,7 +1159,6 @@ fun MainScreen() {
                 modifier = Modifier.fillMaxSize()
             )
 
-            // Automotive Guidance HUD Header Banner
             if (isGuidanceActive && selectedTargetGeoPoint != null) {
                 val loc = currentLocation ?: myLocationOverlay.lastFix
 
@@ -1257,7 +1241,6 @@ fun MainScreen() {
                     }
                 }
             } else {
-                // --- Top Area: Horizontal Navigation Menu & Three Dots Menu placed BELOW the menu ---
                 Column(
                     modifier = Modifier
                         .align(Alignment.TopStart)
@@ -1327,7 +1310,6 @@ fun MainScreen() {
                         }
                     }
 
-                    // Three dots menu button located strictly BELOW the navigation menu
                     Box(modifier = Modifier.fillMaxWidth()) {
                         Surface(
                             shape = RoundedCornerShape(14.dp),
@@ -1379,7 +1361,6 @@ fun MainScreen() {
                 )
             }
 
-            // Target Point Details Card
             if (selectedTargetGeoPoint != null && !isGuidanceActive) {
                 Surface(
                     modifier = Modifier
@@ -1459,7 +1440,6 @@ fun MainScreen() {
                 }
             }
 
-            // --- Bottom Settings Toolbar & Menu ---
             Row(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -1469,7 +1449,6 @@ fun MainScreen() {
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Language Button
                 Surface(
                     shape = RoundedCornerShape(18.dp),
                     shadowElevation = 8.dp,
@@ -1490,7 +1469,6 @@ fun MainScreen() {
                     }
                 }
 
-                // Dark Mode Button
                 Surface(
                     shape = RoundedCornerShape(18.dp),
                     shadowElevation = 8.dp,
@@ -1507,7 +1485,6 @@ fun MainScreen() {
                     }
                 }
 
-                // Radius Slider (Capped to 4 km)
                 Surface(
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(18.dp),
@@ -1535,7 +1512,6 @@ fun MainScreen() {
                     }
                 }
 
-                // Refresh Button
                 Surface(
                     shape = RoundedCornerShape(18.dp),
                     shadowElevation = 8.dp,
@@ -1562,7 +1538,6 @@ fun MainScreen() {
                     }
                 }
 
-                // GPS Location Button
                 Surface(
                     shape = RoundedCornerShape(18.dp),
                     shadowElevation = 8.dp,
