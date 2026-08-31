@@ -32,7 +32,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -80,6 +80,7 @@ import retrofit2.http.Field
 import retrofit2.http.FormUrlEncoded
 import retrofit2.http.POST
 import retrofit2.http.Url
+import java.io.File
 import java.util.concurrent.TimeUnit
 import kotlin.math.abs
 
@@ -121,6 +122,7 @@ data class OverpassResponse(val elements: List<Element>)
 data class CachedAreaResult(
     val center: GeoPoint,
     val radiusKm: Float,
+    val categoryName: String,
     val elements: List<Element>
 )
 
@@ -177,14 +179,12 @@ enum class PoiCategory(
     val osmValue: String,
     val colorHex: String
 ) {
-    // 1. WATER & HYGIENE
     FOUNTAINS(MainCategory.WATER_HYGIENE, "Чешми", "Fountains", "🚰", "amenity", "drinking_water", "#0288D1"),
     TOILETS(MainCategory.WATER_HYGIENE, "Тоалетни", "Toilets", "🚻", "amenity", "toilets", "#7B1FA2"),
     SPRINGS(MainCategory.WATER_HYGIENE, "Извори", "Springs", "🏞️", "natural", "spring", "#00ACC1"),
     SHOWERS(MainCategory.WATER_HYGIENE, "Душове", "Public Showers", "🚿", "amenity", "shower", "#0097A7"),
     BATHS(MainCategory.WATER_HYGIENE, "Минерални бани", "Thermal Baths", "♨️", "amenity", "public_bath", "#00838F"),
 
-    // 2. LEISURE & SPORT
     BENCHES(MainCategory.LEISURE, "Пейки", "Benches", "🪑", "amenity", "bench", "#8D6E63"),
     PLAYGROUNDS(MainCategory.LEISURE, "Площадки", "Playgrounds", "🛝", "leisure", "playground", "#E91E63"),
     FITNESS(MainCategory.LEISURE, "Външен фитнес", "Outdoor Gym", "🏋️", "leisure", "fitness_station", "#4CAF50"),
@@ -194,7 +194,6 @@ enum class PoiCategory(
     SKATE_PARK(MainCategory.LEISURE, "Скейт парк", "Skate Park", "🛹", "leisure", "skate_park", "#795548"),
     SPORTS_PITCH(MainCategory.LEISURE, "Спортно игрище", "Sports Pitch", "⚽", "leisure", "pitch", "#2E7D32"),
 
-    // 3. TRANSPORT & MOBILITY
     EV_CHARGING(MainCategory.TRANSPORT, "EV Зарядни", "EV Chargers", "⚡", "amenity", "charging_station", "#FBC02D"),
     BIKE_PARKING(MainCategory.TRANSPORT, "Велостойки", "Bike Parking", "🚲", "amenity", "bicycle_parking", "#009688"),
     BIKE_RENTAL(MainCategory.TRANSPORT, "Колела под наем", "Bike Rental", "🚴", "amenity", "bicycle_rental", "#00BCD4"),
@@ -203,13 +202,11 @@ enum class PoiCategory(
     PARKING(MainCategory.TRANSPORT, "Паркинги", "Parking Spots", "🅿️", "amenity", "parking", "#1976D2"),
     TAXI(MainCategory.TRANSPORT, "Такси стоянки", "Taxi Ranks", "🚕", "amenity", "taxi", "#F57F17"),
 
-    // 4. ECO & RECYCLING
     RECYCLING(MainCategory.ECO, "Рециклиране", "Recycling", "♻️", "amenity", "recycling", "#00796B"),
     WASTE_BASKET(MainCategory.ECO, "Кошчета за боклук", "Trash Cans", "🗑️", "amenity", "waste_basket", "#455A64"),
     CLOTHES_CONTAINER(MainCategory.ECO, "Дрехи рециклиране", "Clothes Recycling", "👕", "amenity", "waste_disposal", "#00897B"),
     COMPOST(MainCategory.ECO, "Компост", "Compost", "🌱", "amenity", "compost", "#33691E"),
 
-    // 5. CULTURE & ART
     ART(MainCategory.CULTURE, "Стрийт Арт", "Street Art", "🎨", "tourism", "artwork", "#F57C00"),
     BOOKCASE(MainCategory.CULTURE, "Улични библиотеки", "Public Bookcases", "📚", "amenity", "public_bookcase", "#8D6E63"),
     PARCEL_LOCKER(MainCategory.CULTURE, "Шкафчета", "Parcel Lockers", "📦", "amenity", "parcel_locker", "#FF5722"),
@@ -217,7 +214,6 @@ enum class PoiCategory(
     MUSEUM(MainCategory.CULTURE, "Музеи", "Museums", "🏛️", "tourism", "museum", "#5D4037"),
     THEATRE(MainCategory.CULTURE, "Театри", "Theatres", "🎭", "amenity", "theatre", "#AD1457"),
 
-    // 6. FOOD & DRINK
     CAFES(MainCategory.FOOD_DRINK, "Кафенета", "Cafes", "☕", "amenity", "cafe", "#6D4C41"),
     RESTAURANTS(MainCategory.FOOD_DRINK, "Ресторанти", "Restaurants", "🍽️", "amenity", "restaurant", "#D84315"),
     FAST_FOOD(MainCategory.FOOD_DRINK, "Бързо хранене", "Fast Food", "🍔", "amenity", "fast_food", "#EF6C00"),
@@ -225,27 +221,23 @@ enum class PoiCategory(
     ICE_CREAM(MainCategory.FOOD_DRINK, "Сладолед", "Ice Cream", "🍦", "amenity", "ice_cream", "#F48FB1"),
     BAKERY(MainCategory.FOOD_DRINK, "Пекарни", "Bakeries", "🥐", "shop", "bakery", "#A1887F"),
 
-    // 7. HEALTH & SAFETY
     PHARMACY(MainCategory.HEALTH_SAFETY, "Аптеки", "Pharmacies", "💊", "amenity", "pharmacy", "#E53935"),
     DEFIBRILLATOR(MainCategory.HEALTH_SAFETY, "Дефибрилатори (AED)", "AED Defibrillators", "🫀", "emergency", "defibrillator", "#D32F2F"),
     HOSPITAL(MainCategory.HEALTH_SAFETY, "Болници", "Hospitals", "🏥", "amenity", "hospital", "#C62828"),
     POLICE(MainCategory.HEALTH_SAFETY, "Полиция", "Police Stations", "👮", "amenity", "police", "#283593"),
     FIRE_STATION(MainCategory.HEALTH_SAFETY, "Пожарна", "Fire Stations", "🚒", "amenity", "fire_station", "#B71C1C"),
 
-    // 8. SERVICES & FINANCE
     ATM(MainCategory.SERVICES, "Банкомати", "ATMs", "🏧", "amenity", "atm", "#2E7D32"),
     BANK(MainCategory.SERVICES, "Банкови клонове", "Banks", "🏦", "amenity", "bank", "#1B5E20"),
     POST_OFFICE(MainCategory.SERVICES, "Пощенски клонове", "Post Offices", "📯", "amenity", "post_office", "#F9A825"),
     VET(MainCategory.SERVICES, "Ветеринари", "Veterinary Clinics", "🐾", "amenity", "veterinary", "#8E24AA"),
 
-    // 9. NATURE & OUTDOORS
     VIEWPOINTS(MainCategory.NATURE_OUTDOOR, "Панорамни гледки", "Viewpoints", "🌅", "tourism", "viewpoint", "#9C27B0"),
     ATTRACTION(MainCategory.NATURE_OUTDOOR, "Туристически обект", "Attractions", "🎡", "tourism", "attraction", "#AB47BC"),
     CAMPING(MainCategory.NATURE_OUTDOOR, "Къмпинг зони", "Campsites", "⛺", "tourism", "camp_site", "#558B2F"),
     PEAK(MainCategory.NATURE_OUTDOOR, "Планински върхове", "Peaks", "⛰️", "natural", "peak", "#4E342E"),
     INFORMATION(MainCategory.NATURE_OUTDOOR, "Инфо центрове", "Info Points", "ℹ️", "tourism", "information", "#0277BD"),
 
-    // 10. SHOPPING
     SUPERMARKET(MainCategory.SHOPPING, "Супермаркети", "Supermarkets", "🛒", "shop", "supermarket", "#43A047"),
     CONVENIENCE(MainCategory.SHOPPING, "Денонощни магазини", "Convenience Stores", "🏪", "shop", "convenience", "#388E3C"),
     MALL(MainCategory.SHOPPING, "Търговски центрове", "Malls", "🏬", "shop", "mall", "#1B5E20");
@@ -255,10 +247,14 @@ enum class PoiCategory(
 
 val OVERPASS_SERVERS = listOf(
     "https://overpass-api.de/api/interpreter",
+    "https://z.overpass-api.de/api/interpreter",
+    "https://lz4.overpass-api.de/api/interpreter",
     "https://overpass.kumi.systems/api/interpreter",
+    "https://overpass.openstreetmap.fr/api/interpreter",
+    "https://overpass.openstreetmap.ru/api/interpreter",
     "https://overpass.private.coffee/api/interpreter",
     "https://overpass.osm.ch/api/interpreter",
-    "https://overpass.nchc.org.tw/api/interpreter"
+    "https://maps.mail.ru/osm/tools/overpass/api/interpreter"
 )
 
 interface OverpassApi {
@@ -269,8 +265,8 @@ interface OverpassApi {
     companion object {
         fun create(): OverpassApi {
             val okHttpClient = OkHttpClient.Builder()
-                .connectTimeout(10, TimeUnit.SECONDS)
-                .readTimeout(10, TimeUnit.SECONDS)
+                .connectTimeout(5, TimeUnit.SECONDS)
+                .readTimeout(5, TimeUnit.SECONDS)
                 .addInterceptor { chain ->
                     val request = chain.request().newBuilder()
                         .header("User-Agent", "SpotNaut/1.0 (Android)")
@@ -287,6 +283,34 @@ interface OverpassApi {
                 .create(OverpassApi::class.java)
         }
     }
+}
+
+// --- Local Disk Cache Helpers ---
+private fun getCacheFile(context: Context, lat: Double, lon: Double, radius: Float, categoryName: String): File {
+    val roundedLat = String.format("%.2f", lat).toDouble()
+    val roundedLon = String.format("%.2f", lon).toDouble()
+    return File(context.filesDir, "osm_cache_${categoryName}_${roundedLat}_${roundedLon}_${radius}.json")
+}
+
+private fun saveResponseToDisk(context: Context, center: GeoPoint, radius: Float, categoryName: String, response: OverpassResponse) {
+    try {
+        val file = getCacheFile(context, center.latitude, center.longitude, radius, categoryName)
+        file.writeText(Gson().toJson(response))
+    } catch (e: Exception) {
+        Log.e("SpotNaut", "Error saving cache", e)
+    }
+}
+
+private fun loadResponseFromDisk(context: Context, center: GeoPoint, radius: Float, categoryName: String): OverpassResponse? {
+    try {
+        val file = getCacheFile(context, center.latitude, center.longitude, radius, categoryName)
+        if (file.exists() && System.currentTimeMillis() - file.lastModified() < 86400000L) {
+            return Gson().fromJson(file.readText(), OverpassResponse::class.java)
+        }
+    } catch (e: Exception) {
+        Log.e("SpotNaut", "Error loading cache", e)
+    }
+    return null
 }
 
 // --- 2. Automotive Navigation Vector Arrow UI ---
@@ -641,19 +665,13 @@ private fun formatSpotDetails(category: PoiCategory, tags: Map<String, String>?,
     }.joinToString("\n")
 }
 
-private fun buildUnifiedOverpassQuery(lat: Double, lon: Double, radiusMeters: Int): String {
-    val subQueries = PoiCategory.entries.joinToString("\n") { cat ->
-        """
-        node["${cat.osmKey}"="${cat.osmValue}"](around:$radiusMeters,$lat,$lon);
-        way["${cat.osmKey}"="${cat.osmValue}"](around:$radiusMeters,$lat,$lon);
-        relation["${cat.osmKey}"="${cat.osmValue}"](around:$radiusMeters,$lat,$lon);
-        """.trimIndent()
-    }
-
+private fun buildSingleOverpassQuery(lat: Double, lon: Double, radiusMeters: Int, cat: PoiCategory): String {
     return """
-        [out:json][timeout:10];
+        [out:json][timeout:30];
         (
-          $subQueries
+          node["${cat.osmKey}"="${cat.osmValue}"](around:$radiusMeters,$lat,$lon);
+          way["${cat.osmKey}"="${cat.osmValue}"](around:$radiusMeters,$lat,$lon);
+          relation["${cat.osmKey}"="${cat.osmValue}"](around:$radiusMeters,$lat,$lon);
         );
         out center;
     """.trimIndent()
@@ -686,7 +704,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-// --- 5. UI Screen & Left Sidebar Layout ---
+// --- 5. UI Screen & Top Navigation Menu Layout ---
 
 @Composable
 fun MainScreen() {
@@ -707,7 +725,7 @@ fun MainScreen() {
         var selectedMainCategory by remember { mutableStateOf(MainCategory.WATER_HYGIENE) }
         var selectedPoiCategory by remember { mutableStateOf(PoiCategory.FOUNTAINS) }
 
-        var radiusKm by remember { mutableStateOf(2.0f) }
+        var radiusKm by remember { mutableStateOf(3.0f) }
 
         var isLoading by remember { mutableStateOf(false) }
         var activeJob by remember { mutableStateOf<Job?>(null) }
@@ -725,7 +743,6 @@ fun MainScreen() {
         var selectedTargetDetails by remember { mutableStateOf<String?>(null) }
 
         var isGuidanceActive by remember { mutableStateOf(false) }
-        var isSidebarExpanded by remember { mutableStateOf(true) }
 
         var rawRoutePoints by remember { mutableStateOf<List<GeoPoint>>(emptyList()) }
         var displayRoutePoints by remember { mutableStateOf<List<GeoPoint>>(emptyList()) }
@@ -1036,10 +1053,19 @@ fun MainScreen() {
 
             if (!forceReload) {
                 val cachedHit = cacheList.firstOrNull { cached ->
-                    center.distanceToAsDouble(cached.center) < 500.0 && abs(cached.radiusKm - radius) < 0.2f
+                    cached.categoryName == category.name &&
+                            center.distanceToAsDouble(cached.center) < 500.0 &&
+                            abs(cached.radiusKm - radius) < 0.2f
                 }
                 if (cachedHit != null) {
                     renderCategoryElements(cachedHit.elements, category, lang)
+                    return
+                }
+
+                val diskCachedResponse = loadResponseFromDisk(context, center, radius, category.name)
+                if (diskCachedResponse != null) {
+                    cacheList.add(CachedAreaResult(center, radius, category.name, diskCachedResponse.elements))
+                    renderCategoryElements(diskCachedResponse.elements, category, lang)
                     return
                 }
             }
@@ -1047,13 +1073,13 @@ fun MainScreen() {
             activeJob = coroutineScope.launch {
                 isLoading = true
                 try {
-                    val query = buildUnifiedOverpassQuery(center.latitude, center.longitude, radiusMeters)
+                    val query = buildSingleOverpassQuery(center.latitude, center.longitude, radiusMeters, category)
                     var bestResponse: OverpassResponse? = null
                     var lastException: Exception? = null
 
                     for (serverUrl in OVERPASS_SERVERS) {
                         var attemptSuccess = false
-                        for (attempt in 1..5) {
+                        for (attempt in 1..2) {
                             try {
                                 val res = api.getNodes(serverUrl, query)
                                 if (res.elements.isNotEmpty()) {
@@ -1067,14 +1093,17 @@ fun MainScreen() {
                             } catch (e: Exception) {
                                 if (e is CancellationException) throw e
                                 lastException = e
-                                delay(1000)
+                                delay(800)
                             }
                         }
                         if (attemptSuccess && bestResponse?.elements?.isNotEmpty() == true) break
                     }
 
                     val finalResponse = bestResponse ?: throw (lastException ?: Exception("Network failure"))
-                    cacheList.add(CachedAreaResult(center, radius, finalResponse.elements))
+
+                    cacheList.add(CachedAreaResult(center, radius, category.name, finalResponse.elements))
+                    saveResponseToDisk(context, center, radius, category.name, finalResponse)
+
                     renderCategoryElements(finalResponse.elements, category, lang)
 
                 } catch (e: CancellationException) {
@@ -1112,7 +1141,7 @@ fun MainScreen() {
 
         LaunchedEffect(selectedPoiCategory, searchCenterGeoPoint, radiusKm, currentLanguage, isInitialSettling) {
             if (isInitialSettling) return@LaunchedEffect
-            delay(500)
+            delay(300)
             loadOrFilterData(selectedPoiCategory, searchCenterGeoPoint, radiusKm, currentLanguage)
         }
 
@@ -1121,45 +1150,6 @@ fun MainScreen() {
                 factory = { mapView },
                 modifier = Modifier.fillMaxSize()
             )
-
-            // Top Menu Overflow Button
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .statusBarsPadding()
-                    .padding(top = 8.dp, end = 8.dp)
-            ) {
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    shadowElevation = 8.dp,
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)
-                ) {
-                    IconButton(onClick = { showMenu = true }) {
-                        Text("⋮", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-
-                DropdownMenu(
-                    expanded = showMenu,
-                    onDismissRequest = { showMenu = false }
-                ) {
-                    DropdownMenuItem(
-                        text = { Text(if (currentLanguage == AppLanguage.BG) "За приложението" else "About") },
-                        onClick = {
-                            showMenu = false
-                            showAboutDialog = true
-                        }
-                    )
-                    HorizontalDivider()
-                    DropdownMenuItem(
-                        text = { Text(if (currentLanguage == AppLanguage.BG) "Изход" else "Exit") },
-                        onClick = {
-                            showMenu = false
-                            (context as? Activity)?.finish()
-                        }
-                    )
-                }
-            }
 
             // Automotive Guidance HUD Header Banner
             if (isGuidanceActive && selectedTargetGeoPoint != null) {
@@ -1189,7 +1179,7 @@ fun MainScreen() {
                     modifier = Modifier
                         .fillMaxWidth()
                         .statusBarsPadding()
-                        .padding(start = 14.dp, end = 60.dp, top = 8.dp),
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
                     shape = RoundedCornerShape(20.dp),
                     shadowElevation = 12.dp,
                     color = MaterialTheme.colorScheme.primaryContainer
@@ -1244,102 +1234,111 @@ fun MainScreen() {
                     }
                 }
             } else {
-                // --- Left Vertical Dual-Column Navigation Drawer Overlay ---
-                Row(
+                // --- Top Area: Horizontal Navigation Menu & Three Dots Menu placed BELOW the menu ---
+                Column(
                     modifier = Modifier
                         .align(Alignment.TopStart)
                         .statusBarsPadding()
-                        .padding(top = 8.dp, start = 8.dp)
-                        .fillMaxHeight(0.72f)
+                        .padding(horizontal = 8.dp, vertical = 8.dp)
+                        .fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    // Drawer Toggle Button
                     Surface(
-                        onClick = { isSidebarExpanded = !isSidebarExpanded },
-                        shape = RoundedCornerShape(14.dp),
-                        shadowElevation = 8.dp,
-                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
-                        modifier = Modifier.padding(end = 4.dp)
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(18.dp),
+                        shadowElevation = 10.dp,
+                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f)
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .width(36.dp)
-                                .fillMaxHeight(),
-                            contentAlignment = Alignment.Center
+                        Column(
+                            modifier = Modifier.padding(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            Text(
-                                text = if (isSidebarExpanded) "◀" else "▶",
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
+                            LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                items(MainCategory.entries) { mainCat ->
+                                    val isSelected = selectedMainCategory == mainCat
+                                    FilterChip(
+                                        selected = isSelected,
+                                        onClick = {
+                                            selectedMainCategory = mainCat
+                                            val firstSub = PoiCategory.entries.firstOrNull { it.mainCategory == mainCat }
+                                            if (firstSub != null) selectedPoiCategory = firstSub
+                                        },
+                                        label = {
+                                            Text(
+                                                text = "${mainCat.icon} ${mainCat.label(currentLanguage)}",
+                                                fontSize = 12.sp,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                            )
+                                        }
+                                    )
+                                }
+                            }
+
+                            HorizontalDivider(
+                                modifier = Modifier.padding(horizontal = 2.dp),
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
                             )
+
+                            LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                items(currentSubCategories) { poi ->
+                                    val isSelected = selectedPoiCategory == poi
+                                    FilterChip(
+                                        selected = isSelected,
+                                        onClick = { selectedPoiCategory = poi },
+                                        label = {
+                                            Text(
+                                                text = "${poi.icon} ${poi.label(currentLanguage)}",
+                                                fontSize = 12.sp,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                            )
+                                        }
+                                    )
+                                }
+                            }
                         }
                     }
 
-                    if (isSidebarExpanded) {
+                    // Three dots menu button located strictly BELOW the navigation menu
+                    Box(modifier = Modifier.fillMaxWidth()) {
                         Surface(
-                            shape = RoundedCornerShape(20.dp),
-                            shadowElevation = 10.dp,
-                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
-                            modifier = Modifier.width(280.dp)
+                            shape = RoundedCornerShape(14.dp),
+                            shadowElevation = 6.dp,
+                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
+                            modifier = Modifier.align(Alignment.CenterStart)
                         ) {
-                            Row(modifier = Modifier.fillMaxSize().padding(6.dp)) {
-                                // Column 1: Main Categories
-                                LazyColumn(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .fillMaxHeight(),
-                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                            Box {
+                                IconButton(
+                                    onClick = { showMenu = true },
+                                    modifier = Modifier.size(40.dp)
                                 ) {
-                                    items(MainCategory.entries) { mainCat ->
-                                        val isSelected = selectedMainCategory == mainCat
-                                        FilterChip(
-                                            selected = isSelected,
-                                            onClick = {
-                                                selectedMainCategory = mainCat
-                                                val firstSub = PoiCategory.entries.firstOrNull { it.mainCategory == mainCat }
-                                                if (firstSub != null) selectedPoiCategory = firstSub
-                                            },
-                                            label = {
-                                                Text(
-                                                    text = "${mainCat.icon} ${mainCat.label(currentLanguage)}",
-                                                    fontSize = 11.sp,
-                                                    maxLines = 1,
-                                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                                                )
-                                            },
-                                            modifier = Modifier.fillMaxWidth()
-                                        )
-                                    }
+                                    Text("⋮", fontSize = 20.sp, fontWeight = FontWeight.Bold)
                                 }
 
-                                VerticalDivider(
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
-                                )
-
-                                // Column 2: Subcategories (Filtered by Main Selection)
-                                LazyColumn(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .fillMaxHeight(),
-                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                DropdownMenu(
+                                    expanded = showMenu,
+                                    onDismissRequest = { showMenu = false }
                                 ) {
-                                    items(currentSubCategories) { poi ->
-                                        val isSelected = selectedPoiCategory == poi
-                                        FilterChip(
-                                            selected = isSelected,
-                                            onClick = { selectedPoiCategory = poi },
-                                            label = {
-                                                Text(
-                                                    text = "${poi.icon} ${poi.label(currentLanguage)}",
-                                                    fontSize = 11.sp,
-                                                    maxLines = 1,
-                                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                                                )
-                                            },
-                                            modifier = Modifier.fillMaxWidth()
-                                        )
-                                    }
+                                    DropdownMenuItem(
+                                        text = { Text(if (currentLanguage == AppLanguage.BG) "За приложението" else "About") },
+                                        onClick = {
+                                            showMenu = false
+                                            showAboutDialog = true
+                                        }
+                                    )
+                                    HorizontalDivider()
+                                    DropdownMenuItem(
+                                        text = { Text(if (currentLanguage == AppLanguage.BG) "Изход" else "Exit") },
+                                        onClick = {
+                                            showMenu = false
+                                            (context as? Activity)?.finish()
+                                        }
+                                    )
                                 }
                             }
                         }
@@ -1437,7 +1436,7 @@ fun MainScreen() {
                 }
             }
 
-            // Bottom Settings Toolbar
+            // --- Bottom Settings Toolbar & Menu ---
             Row(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -1447,6 +1446,7 @@ fun MainScreen() {
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // Language Button
                 Surface(
                     shape = RoundedCornerShape(18.dp),
                     shadowElevation = 8.dp,
@@ -1456,16 +1456,18 @@ fun MainScreen() {
                         onClick = {
                             currentLanguage = if (currentLanguage == AppLanguage.BG) AppLanguage.EN else AppLanguage.BG
                         },
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                        modifier = Modifier.height(40.dp)
                     ) {
                         Text(
                             text = if (currentLanguage == AppLanguage.BG) "🇧🇬 BG" else "🇬🇧 EN",
                             fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp
+                            fontSize = 12.sp
                         )
                     }
                 }
 
+                // Dark Mode Button
                 Surface(
                     shape = RoundedCornerShape(18.dp),
                     shadowElevation = 8.dp,
@@ -1475,12 +1477,14 @@ fun MainScreen() {
                         onClick = {
                             isDarkMode = !isDarkMode
                             prefs.edit().putBoolean("is_dark_mode", isDarkMode).apply()
-                        }
+                        },
+                        modifier = Modifier.size(40.dp)
                     ) {
                         Text(text = if (isDarkMode) "🌙" else "☀️", fontSize = 18.sp)
                     }
                 }
 
+                // Radius Slider (Capped to 4 km)
                 Surface(
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(18.dp),
@@ -1501,13 +1505,14 @@ fun MainScreen() {
                         Slider(
                             value = radiusKm,
                             onValueChange = { radiusKm = it },
-                            valueRange = 1.0f..5.0f,
-                            steps = 7,
+                            valueRange = 1.0f..4.0f,
+                            steps = 5,
                             modifier = Modifier.height(22.dp)
                         )
                     }
                 }
 
+                // Refresh Button
                 Surface(
                     shape = RoundedCornerShape(18.dp),
                     shadowElevation = 8.dp,
@@ -1519,7 +1524,8 @@ fun MainScreen() {
                                 loadOrFilterData(selectedPoiCategory, searchCenterGeoPoint, radiusKm, currentLanguage, forceReload = true)
                             }
                         },
-                        enabled = !isLoading
+                        enabled = !isLoading,
+                        modifier = Modifier.size(40.dp)
                     ) {
                         if (isLoading) {
                             CircularProgressIndicator(
@@ -1533,6 +1539,7 @@ fun MainScreen() {
                     }
                 }
 
+                // GPS Location Button
                 Surface(
                     shape = RoundedCornerShape(18.dp),
                     shadowElevation = 8.dp,
@@ -1551,7 +1558,8 @@ fun MainScreen() {
                                 val msg = if (currentLanguage == AppLanguage.BG) "Търсене на GPS сигнал..." else "Searching for GPS signal..."
                                 Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                             }
-                        }
+                        },
+                        modifier = Modifier.size(40.dp)
                     ) {
                         Text("🎯", fontSize = 18.sp)
                     }
@@ -1578,7 +1586,7 @@ fun MainScreen() {
 
                                     🌟 Възможности:
                                     • 10 Основни Категории с над 40 подкатегории за градско търсене.
-                                    • Сгъваема 2-колона лява навигационна лента за бърз достъп.
+                                    • Горен навигационен панел с 2 реда за бърз достъп.
                                     • Automotive Navigation с векторни стрелки за завои и кръгови кръстовища.
                                     • Динамично скъсяване на маршрутната линия при движение.
                                     • Автоматично преизчисляване при отклонение.
@@ -1590,7 +1598,7 @@ fun MainScreen() {
 
                                     🌟 Features:
                                     • 10 Main Categories with 40+ POI subcategories.
-                                    • Collapsible 2-column vertical navigation sidebar.
+                                    • Top 2-row horizontal navigation panel.
                                     • Automotive HUD Navigation with vector maneuver arrows.
                                     • Dynamic route polyline trimming.
                                     • Auto re-routing when off path.
