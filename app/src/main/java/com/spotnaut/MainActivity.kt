@@ -725,7 +725,7 @@ fun MainScreen() {
         var selectedMainCategory by remember { mutableStateOf(MainCategory.WATER_HYGIENE) }
         var selectedPoiCategory by remember { mutableStateOf(PoiCategory.FOUNTAINS) }
 
-        var radiusKm by remember { mutableStateOf(3.0f) }
+        var radiusKm by remember { mutableStateOf(2.0f) }
 
         var isLoading by remember { mutableStateOf(false) }
         var activeJob by remember { mutableStateOf<Job?>(null) }
