@@ -34,6 +34,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -52,7 +53,9 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -337,9 +340,11 @@ fun SplashScreen(onFinished: () -> Unit) {
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
-                Text(
-                    text = "📍",
-                    fontSize = 76.sp
+                Image(
+                    painter = painterResource(id = R.drawable.ic_launcher_foreground),
+                    contentDescription = "SpotNaut App Icon",
+                    modifier = Modifier.size(160.dp),
+                    contentScale = ContentScale.Fit
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
@@ -360,7 +365,7 @@ fun SplashScreen(onFinished: () -> Unit) {
     }
 }
 
-// --- Direct Destination Arrow Indicator UI Component (Resized to 40.dp) ---
+// --- Direct Destination Arrow Indicator UI Component ---
 
 @Composable
 fun DestinationArrowIndicator(
@@ -1548,7 +1553,7 @@ fun MainScreen() {
                 }
             }
 
-            // Bottom control area (with Destination Arrow floating cleanly above the My Location button)
+            // Bottom control area
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -1558,7 +1563,6 @@ fun MainScreen() {
                 horizontalAlignment = Alignment.End,
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // Destination arrow indicator placed right above the bottom right location button
                 if (isGuidanceActive && selectedTargetGeoPoint != null) {
                     DestinationArrowIndicator(
                         angle = destinationRelativeAngle,
@@ -1660,7 +1664,7 @@ fun MainScreen() {
                         }
                     }
 
-                    // My Location Button (Rightmost button)
+                    // My Location Button
                     Surface(
                         shape = RoundedCornerShape(18.dp),
                         shadowElevation = 8.dp,
