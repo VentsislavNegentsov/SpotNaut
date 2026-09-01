@@ -30,6 +30,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
@@ -48,6 +51,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -304,13 +308,92 @@ private fun loadResponseFromDisk(context: Context, center: GeoPoint, radius: Flo
     return null
 }
 
-// Изключително бърза пространствена заявка за всички OSM тагове наведнъж
 private fun buildAllCategoriesOverpassQuery(lat: Double, lon: Double, radiusMeters: Int): String {
     return """
         [out:json][timeout:10];
         nwr(around:$radiusMeters,$lat,$lon)[~"^(amenity|leisure|highway|natural|tourism|historic|shop|emergency)$"~"."];
         out center;
     """.trimIndent()
+}
+
+// --- Splash Screen Component ---
+
+@Composable
+fun SplashScreen(onFinished: () -> Unit) {
+    LaunchedEffect(Unit) {
+        delay(3000L)
+        onFinished()
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background
+    ) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier.fillMaxSize()
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = "📍",
+                    fontSize = 76.sp
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = "SpotNaut",
+                    fontSize = 34.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "by Ventsislav Negentsov",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
+                )
+            }
+        }
+    }
+}
+
+// --- Direct Destination Arrow Indicator UI Component (Resized to 40.dp) ---
+
+@Composable
+fun DestinationArrowIndicator(
+    angle: Float,
+    modifier: Modifier = Modifier,
+    arrowColor: Color = MaterialTheme.colorScheme.primary
+) {
+    Surface(
+        modifier = modifier.size(40.dp),
+        shape = RoundedCornerShape(18.dp),
+        shadowElevation = 8.dp,
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
+    ) {
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+            Canvas(
+                modifier = Modifier
+                    .size(22.dp)
+                    .graphicsLayer(rotationZ = angle)
+            ) {
+                val w = size.width
+                val h = size.height
+
+                val arrowPath = Path().apply {
+                    moveTo(w * 0.5f, 0f)              // Arrow tip
+                    lineTo(w * 0.85f, h * 0.95f)      // Right wing
+                    lineTo(w * 0.5f, h * 0.72f)       // Inner notch
+                    lineTo(w * 0.15f, h * 0.95f)      // Left wing
+                    close()
+                }
+                drawPath(arrowPath, color = arrowColor)
+            }
+        }
+    }
 }
 
 // --- 2. Automotive Navigation Vector Arrow UI ---
@@ -692,7 +775,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-// --- 5. UI Screen & Top Navigation Menu Layout ---
+// --- 5. UI Screen Layout ---
 
 @Composable
 fun MainScreen() {
@@ -700,6 +783,7 @@ fun MainScreen() {
     val prefs = remember { context.getSharedPreferences("SpotNautPrefs", Context.MODE_PRIVATE) }
 
     var isDarkMode by remember { mutableStateOf(prefs.getBoolean("is_dark_mode", false)) }
+    var showSplash by remember { mutableStateOf(true) }
 
     MaterialTheme(
         colorScheme = if (isDarkMode) darkColorScheme() else lightColorScheme()
@@ -735,6 +819,7 @@ fun MainScreen() {
         var isGuidanceActive by remember { mutableStateOf(false) }
 
         var lastGpsBearing by remember { mutableFloatStateOf(0f) }
+        var deviceAzimuth by remember { mutableFloatStateOf(0f) }
         var hasGpsBearingEverBeenSet by remember { mutableStateOf(false) }
 
         var rawRoutePoints by remember { mutableStateOf<List<GeoPoint>>(emptyList()) }
@@ -835,8 +920,6 @@ fun MainScreen() {
                 var lastAzimuth = 0f
                 val listener = object : SensorEventListener {
                     override fun onSensorChanged(event: SensorEvent?) {
-                        if (currentIsGuidanceActive && currentHasGpsBearing) return
-
                         if (event?.sensor?.type == Sensor.TYPE_ROTATION_VECTOR) {
                             val rotationMatrix = FloatArray(9)
                             SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
@@ -846,6 +929,10 @@ fun MainScreen() {
 
                             var azimuth = Math.toDegrees(orientation[0].toDouble()).toFloat()
                             if (azimuth < 0) azimuth += 360f
+
+                            deviceAzimuth = azimuth
+
+                            if (currentIsGuidanceActive && currentHasGpsBearing) return
 
                             if (abs(azimuth - lastAzimuth) > 1.5f) {
                                 lastAzimuth = azimuth
@@ -1153,6 +1240,29 @@ fun MainScreen() {
             loadOrFilterData(selectedPoiCategory, searchCenterGeoPoint, radiusKm, currentLanguage)
         }
 
+        val loc = currentLocation ?: myLocationOverlay.lastFix
+        val userGeoPoint = loc?.let { GeoPoint(it.latitude, it.longitude) }
+            ?: myLocationOverlay.myLocation
+            ?: getUserLocation(context)?.let { GeoPoint(it.latitude, it.longitude) }
+
+        val destinationRelativeAngle = remember(userGeoPoint, selectedTargetGeoPoint, deviceAzimuth, lastGpsBearing, hasGpsBearingEverBeenSet) {
+            if (userGeoPoint != null && selectedTargetGeoPoint != null) {
+                val results = FloatArray(2)
+                Location.distanceBetween(
+                    userGeoPoint.latitude, userGeoPoint.longitude,
+                    selectedTargetGeoPoint!!.latitude, selectedTargetGeoPoint!!.longitude,
+                    results
+                )
+                val targetAbsoluteBearing = (results[1] + 360f) % 360f
+                val currentHeading = if (hasGpsBearingEverBeenSet && (loc?.hasSpeed() == true && loc.speed > 0.5f)) {
+                    lastGpsBearing
+                } else {
+                    deviceAzimuth
+                }
+                (targetAbsoluteBearing - currentHeading + 360f) % 360f
+            } else 0f
+        }
+
         Box(modifier = Modifier.fillMaxSize()) {
             AndroidView(
                 factory = { mapView },
@@ -1160,8 +1270,6 @@ fun MainScreen() {
             )
 
             if (isGuidanceActive && selectedTargetGeoPoint != null) {
-                val loc = currentLocation ?: myLocationOverlay.lastFix
-
                 val nextStep = navigationSteps.firstOrNull { step ->
                     val stepLoc = step.maneuver?.location
                     if (stepLoc != null && loc != null) {
@@ -1234,9 +1342,9 @@ fun MainScreen() {
                             onClick = { isGuidanceActive = false },
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
                             shape = RoundedCornerShape(12.dp),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                         ) {
-                            Text(if (currentLanguage == AppLanguage.BG) "Край" else "End", fontSize = 12.sp)
+                            Text(if (currentLanguage == AppLanguage.BG) "Край" else "End", fontSize = 13.sp)
                         }
                     }
                 }
@@ -1440,126 +1548,142 @@ fun MainScreen() {
                 }
             }
 
-            Row(
+            // Bottom control area (with Destination Arrow floating cleanly above the My Location button)
+            Column(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .navigationBarsPadding()
                     .padding(bottom = 16.dp, start = 8.dp, end = 8.dp)
                     .fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Surface(
-                    shape = RoundedCornerShape(18.dp),
-                    shadowElevation = 8.dp,
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
-                ) {
-                    TextButton(
-                        onClick = {
-                            currentLanguage = if (currentLanguage == AppLanguage.BG) AppLanguage.EN else AppLanguage.BG
-                        },
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
-                        modifier = Modifier.height(40.dp)
-                    ) {
-                        Text(
-                            text = if (currentLanguage == AppLanguage.BG) "🇧🇬 BG" else "🇬🇧 EN",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp
-                        )
-                    }
+                // Destination arrow indicator placed right above the bottom right location button
+                if (isGuidanceActive && selectedTargetGeoPoint != null) {
+                    DestinationArrowIndicator(
+                        angle = destinationRelativeAngle,
+                        arrowColor = MaterialTheme.colorScheme.primary
+                    )
                 }
 
-                Surface(
-                    shape = RoundedCornerShape(18.dp),
-                    shadowElevation = 8.dp,
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(
-                        onClick = {
-                            isDarkMode = !isDarkMode
-                            prefs.edit().putBoolean("is_dark_mode", isDarkMode).apply()
-                        },
-                        modifier = Modifier.size(40.dp)
+                    Surface(
+                        shape = RoundedCornerShape(18.dp),
+                        shadowElevation = 8.dp,
+                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
                     ) {
-                        Text(text = if (isDarkMode) "🌙" else "☀️", fontSize = 18.sp)
-                    }
-                }
-
-                Surface(
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(18.dp),
-                    shadowElevation = 8.dp,
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = if (currentLanguage == AppLanguage.BG) "Радиус: ${String.format("%.1f", radiusKm)} км"
-                            else "Radius: ${String.format("%.1f", radiusKm)} km",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Slider(
-                            value = radiusKm,
-                            onValueChange = { radiusKm = it },
-                            valueRange = 1.0f..4.0f,
-                            steps = 5,
-                            modifier = Modifier.height(22.dp)
-                        )
-                    }
-                }
-
-                Surface(
-                    shape = RoundedCornerShape(18.dp),
-                    shadowElevation = 8.dp,
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
-                ) {
-                    IconButton(
-                        onClick = {
-                            if (!isInitialSettling && !isLoading) {
-                                loadOrFilterData(selectedPoiCategory, searchCenterGeoPoint, radiusKm, currentLanguage, forceReload = true)
-                            }
-                        },
-                        enabled = !isLoading,
-                        modifier = Modifier.size(40.dp)
-                    ) {
-                        if (isLoading) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(20.dp),
-                                strokeWidth = 2.5.dp,
-                                color = MaterialTheme.colorScheme.primary
+                        TextButton(
+                            onClick = {
+                                currentLanguage = if (currentLanguage == AppLanguage.BG) AppLanguage.EN else AppLanguage.BG
+                            },
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                            modifier = Modifier.height(40.dp)
+                        ) {
+                            Text(
+                                text = if (currentLanguage == AppLanguage.BG) "🇧🇬 BG" else "🇬🇧 EN",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp
                             )
-                        } else {
-                            Text("🔄", fontSize = 16.sp)
                         }
                     }
-                }
 
-                Surface(
-                    shape = RoundedCornerShape(18.dp),
-                    shadowElevation = 8.dp,
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
-                ) {
-                    IconButton(
-                        onClick = {
-                            val myLoc = myLocationOverlay.myLocation
-                            val geoPoint = if (myLoc != null) GeoPoint(myLoc.latitude, myLoc.longitude)
-                            else getUserLocation(context)?.let { GeoPoint(it.latitude, it.longitude) }
-
-                            if (geoPoint != null) {
-                                searchCenterGeoPoint = geoPoint
-                                mapView.controller.animateTo(geoPoint)
-                            } else {
-                                val msg = if (currentLanguage == AppLanguage.BG) "Търсене на GPS сигнал..." else "Searching for GPS signal..."
-                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                            }
-                        },
-                        modifier = Modifier.size(40.dp)
+                    Surface(
+                        shape = RoundedCornerShape(18.dp),
+                        shadowElevation = 8.dp,
+                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
                     ) {
-                        Text("🎯", fontSize = 18.sp)
+                        IconButton(
+                            onClick = {
+                                isDarkMode = !isDarkMode
+                                prefs.edit().putBoolean("is_dark_mode", isDarkMode).apply()
+                            },
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Text(text = if (isDarkMode) "🌙" else "☀️", fontSize = 18.sp)
+                        }
+                    }
+
+                    Surface(
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(18.dp),
+                        shadowElevation = 8.dp,
+                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = if (currentLanguage == AppLanguage.BG) "Радиус: ${String.format("%.1f", radiusKm)} км"
+                                else "Radius: ${String.format("%.1f", radiusKm)} km",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Slider(
+                                value = radiusKm,
+                                onValueChange = { radiusKm = it },
+                                valueRange = 1.0f..4.0f,
+                                steps = 5,
+                                modifier = Modifier.height(22.dp)
+                            )
+                        }
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(18.dp),
+                        shadowElevation = 8.dp,
+                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
+                    ) {
+                        IconButton(
+                            onClick = {
+                                if (!isInitialSettling && !isLoading) {
+                                    loadOrFilterData(selectedPoiCategory, searchCenterGeoPoint, radiusKm, currentLanguage, forceReload = true)
+                                }
+                            },
+                            enabled = !isLoading,
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            if (isLoading) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    strokeWidth = 2.5.dp,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            } else {
+                                Text("🔄", fontSize = 16.sp)
+                            }
+                        }
+                    }
+
+                    // My Location Button (Rightmost button)
+                    Surface(
+                        shape = RoundedCornerShape(18.dp),
+                        shadowElevation = 8.dp,
+                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
+                    ) {
+                        IconButton(
+                            onClick = {
+                                val myLoc = myLocationOverlay.myLocation
+                                val point = if (myLoc != null) GeoPoint(myLoc.latitude, myLoc.longitude)
+                                else getUserLocation(context)?.let { GeoPoint(it.latitude, it.longitude) }
+
+                                if (point != null) {
+                                    searchCenterGeoPoint = point
+                                    mapView.controller.animateTo(point)
+                                } else {
+                                    val msg = if (currentLanguage == AppLanguage.BG) "Търсене на GPS сигнал..." else "Searching for GPS signal..."
+                                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Text("🎯", fontSize = 18.sp)
+                        }
                     }
                 }
             }
@@ -1614,6 +1738,14 @@ fun MainScreen() {
                         }
                     }
                 )
+            }
+
+            AnimatedVisibility(
+                visible = showSplash,
+                enter = fadeIn(),
+                exit = fadeOut()
+            ) {
+                SplashScreen(onFinished = { showSplash = false })
             }
         }
     }
