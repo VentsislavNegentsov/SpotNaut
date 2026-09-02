@@ -890,8 +890,8 @@ fun MainScreen() {
 
         var currentLanguage by remember { mutableStateOf(AppLanguage.EN) }
         var selectedMainCategory by remember { mutableStateOf(MainCategory.WATER_HYGIENE) }
-        var selectedPoiCategory by remember { mutableStateOf<PoiCategory?>(null) }
-        var isSubCategoryListVisible by remember { mutableStateOf(true) }
+        var selectedPoiCategory by remember { mutableStateOf<PoiCategory?>(PoiCategory.FOUNTAINS) }
+        var isSubCategoryListVisible by remember { mutableStateOf(false) }
 
         var radiusKm by remember { mutableStateOf(2.0f) }
 
