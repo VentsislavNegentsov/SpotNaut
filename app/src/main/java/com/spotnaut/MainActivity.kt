@@ -91,7 +91,7 @@ import java.io.File
 import java.util.concurrent.TimeUnit
 import kotlin.math.abs
 
-// --- 1. Data Models & Category Taxonomy ---
+// --- 1. Data Models & 100 POI Taxonomy ---
 
 enum class AppLanguage { BG, EN }
 
@@ -165,7 +165,8 @@ enum class MainCategory(
     HEALTH_SAFETY("Здраве & Спешни", "Health & Emergency", "🏥"),
     SERVICES("Услуги & Финанси", "Services & Finance", "🏧"),
     NATURE_OUTDOOR("Природа & Забележителности", "Nature & Sights", "🏔️"),
-    SHOPPING("Пазаруване", "Shopping", "🛒");
+    SHOPPING("Пазаруване", "Shopping", "🛒"),
+    FAMILY("Деца & Семейство", "Family & Kids", "🧸");
 
     fun label(lang: AppLanguage): String = if (lang == AppLanguage.BG) labelBg else labelEn
 }
@@ -179,12 +180,15 @@ enum class PoiCategory(
     val osmValue: String,
     val colorHex: String
 ) {
+    // 1. Water & Hygiene (6)
     FOUNTAINS(MainCategory.WATER_HYGIENE, "Чешми", "Fountains", "🚰", "amenity", "drinking_water", "#0288D1"),
     TOILETS(MainCategory.WATER_HYGIENE, "Тоалетни", "Toilets", "🚻", "amenity", "toilets", "#7B1FA2"),
     SPRINGS(MainCategory.WATER_HYGIENE, "Извори", "Springs", "🏞️", "natural", "spring", "#00ACC1"),
     SHOWERS(MainCategory.WATER_HYGIENE, "Душове", "Public Showers", "🚿", "amenity", "shower", "#0097A7"),
     BATHS(MainCategory.WATER_HYGIENE, "Минерални бани", "Thermal Baths", "♨️", "amenity", "public_bath", "#00838F"),
+    HANDWASHING(MainCategory.WATER_HYGIENE, "Мивки за ръце", "Handwash Stations", "🧼", "amenity", "washbasin", "#00BCD4"),
 
+    // 2. Leisure & Sport (12)
     BENCHES(MainCategory.LEISURE, "Пейки", "Benches", "🪑", "amenity", "bench", "#8D6E63"),
     PLAYGROUNDS(MainCategory.LEISURE, "Площадки", "Playgrounds", "🛝", "leisure", "playground", "#E91E63"),
     FITNESS(MainCategory.LEISURE, "Външен фитнес", "Outdoor Gym", "🏋️", "leisure", "fitness_station", "#4CAF50"),
@@ -193,54 +197,110 @@ enum class PoiCategory(
     BBQ(MainCategory.LEISURE, "Барбекю", "BBQ Spots", "🍖", "amenity", "bbq", "#E65100"),
     SKATE_PARK(MainCategory.LEISURE, "Скейт парк", "Skate Park", "🛹", "leisure", "skate_park", "#795548"),
     SPORTS_PITCH(MainCategory.LEISURE, "Спортно игрище", "Sports Pitch", "⚽", "leisure", "pitch", "#2E7D32"),
+    SWIMMING_POOL(MainCategory.LEISURE, "Басейни", "Swimming Pools", "🏊", "leisure", "swimming_pool", "#0288D1"),
+    TENNIS_COURT(MainCategory.LEISURE, "Тенис кортове", "Tennis Courts", "🎾", "sport", "tennis", "#8BC34A"),
+    SPORTS_CENTRE(MainCategory.LEISURE, "Спортни центрове", "Sports Centers", "🏟️", "leisure", "sports_centre", "#1B5E20"),
+    PARKS(MainCategory.LEISURE, "Градски паркове", "City Parks", "🏞️", "leisure", "park", "#2E7D32"),
 
+    // 3. Transport (10)
     EV_CHARGING(MainCategory.TRANSPORT, "EV Зарядни", "EV Chargers", "⚡", "amenity", "charging_station", "#FBC02D"),
     BIKE_PARKING(MainCategory.TRANSPORT, "Велостойки", "Bike Parking", "🚲", "amenity", "bicycle_parking", "#009688"),
     BIKE_RENTAL(MainCategory.TRANSPORT, "Колела под наем", "Bike Rental", "🚴", "amenity", "bicycle_rental", "#00BCD4"),
     BIKE_REPAIR(MainCategory.TRANSPORT, "Велоремонт", "Bike Repair", "🔧", "amenity", "bike_repair_station", "#607D8B"),
     BUS_STOP(MainCategory.TRANSPORT, "Автобусни спирки", "Bus Stops", "🚌", "highway", "bus_stop", "#1565C0"),
+    SUBWAY_ENTRANCE(MainCategory.TRANSPORT, "Метростанции", "Metro Stations", "🚇", "railway", "subway_entrance", "#0D47A1"),
+    TRAIN_STATION(MainCategory.TRANSPORT, "ЖП гари", "Train Stations", "🚆", "building", "train_station", "#1A237E"),
     PARKING(MainCategory.TRANSPORT, "Паркинги", "Parking Spots", "🅿️", "amenity", "parking", "#1976D2"),
     TAXI(MainCategory.TRANSPORT, "Такси стоянки", "Taxi Ranks", "🚕", "amenity", "taxi", "#F57F17"),
+    FUEL(MainCategory.TRANSPORT, "Бензиностанции", "Gas Stations", "⛽", "amenity", "fuel", "#D32F2F"),
 
+    // 4. Eco & Recycling (6)
     RECYCLING(MainCategory.ECO, "Рециклиране", "Recycling", "♻️", "amenity", "recycling", "#00796B"),
     WASTE_BASKET(MainCategory.ECO, "Кошчета за боклук", "Trash Cans", "🗑️", "amenity", "waste_basket", "#455A64"),
     CLOTHES_CONTAINER(MainCategory.ECO, "Дрехи рециклиране", "Clothes Recycling", "👕", "amenity", "waste_disposal", "#00897B"),
     COMPOST(MainCategory.ECO, "Компост", "Compost", "🌱", "amenity", "compost", "#33691E"),
+    DOG_WASTE(MainCategory.ECO, "Кошчета за кучета", "Dog Waste Bins", "💩", "amenity", "waste_disposal", "#5D4037"),
+    BATTERY_DISPOSAL(MainCategory.ECO, "Батерии контейнери", "Battery Drop-off", "🔋", "amenity", "waste_disposal", "#F57F17"),
 
+    // 5. Culture & Art (10)
     ART(MainCategory.CULTURE, "Стрийт Арт", "Street Art", "🎨", "tourism", "artwork", "#F57C00"),
     BOOKCASE(MainCategory.CULTURE, "Улични библиотеки", "Public Bookcases", "📚", "amenity", "public_bookcase", "#8D6E63"),
     PARCEL_LOCKER(MainCategory.CULTURE, "Шкафчета", "Parcel Lockers", "📦", "amenity", "parcel_locker", "#FF5722"),
     MONUMENTS(MainCategory.CULTURE, "Паметници", "Monuments", "🗿", "historic", "monument", "#78909C"),
     MUSEUM(MainCategory.CULTURE, "Музеи", "Museums", "🏛️", "tourism", "museum", "#5D4037"),
     THEATRE(MainCategory.CULTURE, "Театри", "Theatres", "🎭", "amenity", "theatre", "#AD1457"),
+    CASTLE(MainCategory.CULTURE, "Замъци & Крепости", "Castles & Ruins", "🏰", "historic", "castle", "#4E342E"),
+    PLACE_OF_WORSHIP(MainCategory.CULTURE, "Храмове", "Places of Worship", "⛪", "amenity", "place_of_worship", "#6A1B9A"),
+    CINEMA(MainCategory.CULTURE, "Кина", "Cinemas", "🍿", "amenity", "cinema", "#C2185B"),
+    LIBRARY(MainCategory.CULTURE, "Библиотеки", "Public Libraries", "📖", "amenity", "library", "#1565C0"),
 
+    // 6. Food & Drink (12)
     CAFES(MainCategory.FOOD_DRINK, "Кафенета", "Cafes", "☕", "amenity", "cafe", "#6D4C41"),
     RESTAURANTS(MainCategory.FOOD_DRINK, "Ресторанти", "Restaurants", "🍽️", "amenity", "restaurant", "#D84315"),
     FAST_FOOD(MainCategory.FOOD_DRINK, "Бързо хранене", "Fast Food", "🍔", "amenity", "fast_food", "#EF6C00"),
     PUB(MainCategory.FOOD_DRINK, "Пъбове & Барове", "Pubs & Bars", "🍺", "amenity", "pub", "#C62828"),
     ICE_CREAM(MainCategory.FOOD_DRINK, "Сладолед", "Ice Cream", "🍦", "amenity", "ice_cream", "#F48FB1"),
     BAKERY(MainCategory.FOOD_DRINK, "Пекарни", "Bakeries", "🥐", "shop", "bakery", "#A1887F"),
+    PASTRY(MainCategory.FOOD_DRINK, "Сладкарници", "Pastry Shops", "🍰", "shop", "pastry", "#E91E63"),
+    FOOD_COURT(MainCategory.FOOD_DRINK, "Фууд корт", "Food Courts", "🍱", "amenity", "food_court", "#FF9800"),
+    WINE_SHOP(MainCategory.FOOD_DRINK, "Винени магазини", "Wine Shops", "🍷", "shop", "wine", "#880E4F"),
+    COFFEE_ROAST(MainCategory.FOOD_DRINK, "Пекарни за кафе", "Coffee Roasters", "☕", "shop", "coffee", "#4E342E"),
+    TEA_HOUSE(MainCategory.FOOD_DRINK, "Чаени къщи", "Tea Houses", "🍵", "amenity", "tea_house", "#558B2F"),
+    FOOD_TRUCK(MainCategory.FOOD_DRINK, "Камиони за храна", "Food Trucks", "🚚", "amenity", "fast_food", "#FF6F00"),
 
+    // 7. Health & Safety (8)
     PHARMACY(MainCategory.HEALTH_SAFETY, "Аптеки", "Pharmacies", "💊", "amenity", "pharmacy", "#E53935"),
     DEFIBRILLATOR(MainCategory.HEALTH_SAFETY, "Дефибрилатори (AED)", "AED Defibrillators", "🫀", "emergency", "defibrillator", "#D32F2F"),
     HOSPITAL(MainCategory.HEALTH_SAFETY, "Болници", "Hospitals", "🏥", "amenity", "hospital", "#C62828"),
+    CLINIC(MainCategory.HEALTH_SAFETY, "Поликлиники", "Medical Clinics", "🩺", "amenity", "clinic", "#1E88E5"),
     POLICE(MainCategory.HEALTH_SAFETY, "Полиция", "Police Stations", "👮", "amenity", "police", "#283593"),
     FIRE_STATION(MainCategory.HEALTH_SAFETY, "Пожарна", "Fire Stations", "🚒", "amenity", "fire_station", "#B71C1C"),
+    DENTIST(MainCategory.HEALTH_SAFETY, "Зъболекари", "Dental Clinics", "🦷", "amenity", "dentist", "#00ACC1"),
+    VET(MainCategory.HEALTH_SAFETY, "Ветеринари", "Veterinary Clinics", "🐾", "amenity", "veterinary", "#8E24AA"),
 
+    // 8. Services & Finance (10)
     ATM(MainCategory.SERVICES, "Банкомати", "ATMs", "🏧", "amenity", "atm", "#2E7D32"),
     BANK(MainCategory.SERVICES, "Банкови клонове", "Banks", "🏦", "amenity", "bank", "#1B5E20"),
     POST_OFFICE(MainCategory.SERVICES, "Пощенски клонове", "Post Offices", "📯", "amenity", "post_office", "#F9A825"),
-    VET(MainCategory.SERVICES, "Ветеринари", "Veterinary Clinics", "🐾", "amenity", "veterinary", "#8E24AA"),
+    LAUNDRY(MainCategory.SERVICES, "Перални", "Laundromats", "🧺", "shop", "laundry", "#0288D1"),
+    TAILOR(MainCategory.SERVICES, "Шивачи", "Tailors & Repair", "🧵", "shop", "tailor", "#7B1FA2"),
+    CAR_REPAIR(MainCategory.SERVICES, "Автосервизи", "Auto Mechanics", "👨‍🔧", "shop", "car_repair", "#455A64"),
+    CAR_WASH(MainCategory.SERVICES, "Автомивки", "Car Washes", "🚘", "amenity", "car_wash", "#0288D1"),
+    COWORKING(MainCategory.SERVICES, "Споделени офиси", "Co-working Spaces", "💻", "amenity", "coworking_space", "#512DA8"),
+    PHOTO_BOOTH(MainCategory.SERVICES, "Фото кабини", "Photo Booths", "📸", "amenity", "photo_booth", "#D81B60"),
+    HAIRDRESSER(MainCategory.SERVICES, "Фризьори", "Hairdressers", "✂️", "shop", "hairdresser", "#C2185B"),
 
+    // 9. Nature & Outdoor (10)
     VIEWPOINTS(MainCategory.NATURE_OUTDOOR, "Панорамни гледки", "Viewpoints", "🌅", "tourism", "viewpoint", "#9C27B0"),
     ATTRACTION(MainCategory.NATURE_OUTDOOR, "Туристически обект", "Attractions", "🎡", "tourism", "attraction", "#AB47BC"),
     CAMPING(MainCategory.NATURE_OUTDOOR, "Къмпинг зони", "Campsites", "⛺", "tourism", "camp_site", "#558B2F"),
     PEAK(MainCategory.NATURE_OUTDOOR, "Планински върхове", "Peaks", "⛰️", "natural", "peak", "#4E342E"),
     INFORMATION(MainCategory.NATURE_OUTDOOR, "Инфо центрове", "Info Points", "ℹ️", "tourism", "information", "#0277BD"),
+    CAVE(MainCategory.NATURE_OUTDOOR, "Пещери", "Cave Entrances", "🦇", "natural", "cave_entrance", "#3E2723"),
+    WATERFALL(MainCategory.NATURE_OUTDOOR, "Водопади", "Waterfalls", "🌊", "waterway", "waterfall", "#0288D1"),
+    SHELTER(MainCategory.NATURE_OUTDOOR, "Заслони", "Mountain Huts", "🏚️", "amenity", "shelter", "#6D4C41"),
+    VIEW_TOWER(MainCategory.NATURE_OUTDOOR, "Кули за наблюдение", "Observation Towers", "🔭", "tourism", "viewpoint", "#512DA8"),
+    BEACH(MainCategory.NATURE_OUTDOOR, "Плажове", "Beaches", "🏖️", "natural", "beach", "#FBC02D"),
 
+    // 10. Shopping & Retail (10)
     SUPERMARKET(MainCategory.SHOPPING, "Супермаркети", "Supermarkets", "🛒", "shop", "supermarket", "#43A047"),
     CONVENIENCE(MainCategory.SHOPPING, "Денонощни магазини", "Convenience Stores", "🏪", "shop", "convenience", "#388E3C"),
-    MALL(MainCategory.SHOPPING, "Търговски центрове", "Malls", "🏬", "shop", "mall", "#1B5E20");
+    MALL(MainCategory.SHOPPING, "Търговски центрове", "Malls", "🏬", "shop", "mall", "#1B5E20"),
+    MARKET(MainCategory.SHOPPING, "Пазари", "Farmers Markets", "🧺", "amenity", "marketplace", "#EF6C00"),
+    CLOTHES(MainCategory.SHOPPING, "Магазини за дрехи", "Clothing Stores", "👗", "shop", "clothes", "#AD1457"),
+    HARDWARE(MainCategory.SHOPPING, "Железарии", "Hardware Stores", "🔨", "shop", "hardware", "#607D8B"),
+    ELECTRONICS(MainCategory.SHOPPING, "Електроника", "Electronics Stores", "📱", "shop", "electronics", "#1565C0"),
+    BOOKSTORE(MainCategory.SHOPPING, "Книжарници", "Bookstores", "📚", "shop", "books", "#6D4C41"),
+    PET_SHOP(MainCategory.SHOPPING, "Зоомагазини", "Pet Shops", "🐶", "shop", "pet", "#8D6E63"),
+    FLORIST(MainCategory.SHOPPING, "Цветарски магазини", "Flower Shops", "💐", "shop", "florist", "#EC407A"),
+
+    // 11. Family & Kids (6)
+    KINDERGARTEN(MainCategory.FAMILY, "Детски градини", "Kindergartens", "🧸", "amenity", "kindergarten", "#F48FB1"),
+    TOY_STORE(MainCategory.FAMILY, "Магазини за играчки", "Toy Stores", "🧸", "shop", "toys", "#FF4081"),
+    THEME_PARK(MainCategory.FAMILY, "Увеселителни паркове", "Theme Parks", "🎢", "tourism", "theme_park", "#7C4DFF"),
+    BABY_HATCH(MainCategory.FAMILY, "Стаи за бебета", "Baby Changing Rooms", "👶", "amenity", "baby_hatch", "#40C4FF"),
+    YOUTH_CENTRE(MainCategory.FAMILY, "Младежки центрове", "Youth Centers", "🛹", "amenity", "youth_centre", "#64FFDA"),
+    ZOO(MainCategory.FAMILY, "Зоопаркове", "Zoos & Animal Parks", "🦁", "tourism", "zoo", "#4CAF50");
 
     fun label(lang: AppLanguage): String = if (lang == AppLanguage.BG) labelBg else labelEn
 }
@@ -314,7 +374,7 @@ private fun loadResponseFromDisk(context: Context, center: GeoPoint, radius: Flo
 private fun buildAllCategoriesOverpassQuery(lat: Double, lon: Double, radiusMeters: Int): String {
     return """
         [out:json][timeout:10];
-        nwr(around:$radiusMeters,$lat,$lon)[~"^(amenity|leisure|highway|natural|tourism|historic|shop|emergency)$"~"."];
+        nwr(around:$radiusMeters,$lat,$lon)[~"^(amenity|leisure|highway|natural|tourism|historic|shop|emergency|building|railway|sport|waterway)$"~"."];
         out center;
     """.trimIndent()
 }
@@ -372,7 +432,7 @@ fun SplashScreen(onFinished: () -> Unit) {
     }
 }
 
-// --- Direct Destination Arrow Indicator UI Component with Distance Badge ---
+// --- Destination Arrow Indicator UI Component ---
 
 @Composable
 fun DestinationArrowIndicator(
@@ -416,10 +476,10 @@ fun DestinationArrowIndicator(
                     val h = size.height
 
                     val arrowPath = Path().apply {
-                        moveTo(w * 0.5f, 0f)              // Arrow tip
-                        lineTo(w * 0.85f, h * 0.95f)      // Right wing
-                        lineTo(w * 0.5f, h * 0.72f)       // Inner notch
-                        lineTo(w * 0.15f, h * 0.95f)      // Left wing
+                        moveTo(w * 0.5f, 0f)
+                        lineTo(w * 0.85f, h * 0.95f)
+                        lineTo(w * 0.5f, h * 0.72f)
+                        lineTo(w * 0.15f, h * 0.95f)
                         close()
                     }
                     drawPath(arrowPath, color = arrowColor)
@@ -830,7 +890,8 @@ fun MainScreen() {
 
         var currentLanguage by remember { mutableStateOf(AppLanguage.BG) }
         var selectedMainCategory by remember { mutableStateOf(MainCategory.WATER_HYGIENE) }
-        var selectedPoiCategory by remember { mutableStateOf(PoiCategory.FOUNTAINS) }
+        var selectedPoiCategory by remember { mutableStateOf<PoiCategory?>(null) }
+        var isSubCategoryListVisible by remember { mutableStateOf(true) }
 
         var radiusKm by remember { mutableStateOf(2.0f) }
 
@@ -1303,7 +1364,15 @@ fun MainScreen() {
         LaunchedEffect(selectedPoiCategory, searchCenterGeoPoint, radiusKm, currentLanguage, isInitialSettling) {
             if (isInitialSettling) return@LaunchedEffect
             delay(100)
-            loadOrFilterData(selectedPoiCategory, searchCenterGeoPoint, radiusKm, currentLanguage)
+            selectedPoiCategory?.let { category ->
+                loadOrFilterData(category, searchCenterGeoPoint, radiusKm, currentLanguage)
+            } ?: run {
+                deselectCurrentMarker()
+                mapView.overlays.clear()
+                mapView.overlays.add(mapEventsOverlay)
+                mapView.overlays.add(myLocationOverlay)
+                mapView.invalidate()
+            }
         }
 
         val loc = currentLocation ?: myLocationOverlay.lastFix
@@ -1324,7 +1393,6 @@ fun MainScreen() {
             } else 0f
         }
 
-        // Calculate straight line distance in meters to the target
         val distanceToTargetMeters = remember(userGeoPoint, selectedTargetGeoPoint) {
             if (userGeoPoint != null && selectedTargetGeoPoint != null) {
                 userGeoPoint.distanceToAsDouble(selectedTargetGeoPoint).toInt()
@@ -1413,6 +1481,7 @@ fun MainScreen() {
                     }
                 }
             } else {
+                // Top control bar
                 Column(
                     modifier = Modifier
                         .align(Alignment.TopStart)
@@ -1431,6 +1500,7 @@ fun MainScreen() {
                             modifier = Modifier.padding(8.dp),
                             verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
+                            // Line 1: Main Category bar
                             LazyRow(
                                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                                 modifier = Modifier.fillMaxWidth()
@@ -1440,9 +1510,13 @@ fun MainScreen() {
                                     FilterChip(
                                         selected = isSelected,
                                         onClick = {
-                                            selectedMainCategory = mainCat
-                                            val firstSub = PoiCategory.entries.firstOrNull { it.mainCategory == mainCat }
-                                            if (firstSub != null) selectedPoiCategory = firstSub
+                                            if (selectedMainCategory == mainCat) {
+                                                isSubCategoryListVisible = !isSubCategoryListVisible
+                                            } else {
+                                                selectedMainCategory = mainCat
+                                                selectedPoiCategory = null // Default: no sub-item selected
+                                                isSubCategoryListVisible = true
+                                            }
                                         },
                                         label = {
                                             Text(
@@ -1455,33 +1529,54 @@ fun MainScreen() {
                                 }
                             }
 
-                            HorizontalDivider(
-                                modifier = Modifier.padding(horizontal = 2.dp),
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
-                            )
+                            // Items from selected category listed vertically (as a column)
+                            if (isSubCategoryListVisible) {
+                                HorizontalDivider(
+                                    modifier = Modifier.padding(horizontal = 2.dp),
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
+                                )
 
-                            LazyRow(
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                items(currentSubCategories) { poi ->
-                                    val isSelected = selectedPoiCategory == poi
-                                    FilterChip(
-                                        selected = isSelected,
-                                        onClick = { selectedPoiCategory = poi },
-                                        label = {
-                                            Text(
-                                                text = "${poi.icon} ${poi.label(currentLanguage)}",
-                                                fontSize = 12.sp,
-                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                                            )
+                                Surface(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(max = 250.dp),
+                                    color = Color.Transparent
+                                ) {
+                                    Column(
+                                        modifier = Modifier.verticalScroll(rememberScrollState()),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        currentSubCategories.forEach { poi ->
+                                            val isSelected = selectedPoiCategory == poi
+                                            Surface(
+                                                shape = RoundedCornerShape(10.dp),
+                                                color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                                onClick = {
+                                                    selectedPoiCategory = poi
+                                                    isSubCategoryListVisible = false // Auto-hide column on selection so map is clearly viewed
+                                                },
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Text(
+                                                        text = "${poi.icon} ${poi.label(currentLanguage)}",
+                                                        fontSize = 13.sp,
+                                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                        color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+                                                    )
+                                                }
+                                            }
                                         }
-                                    )
+                                    }
                                 }
                             }
                         }
                     }
 
+                    // 3-dots menu row aligned to the right
                     Box(modifier = Modifier.fillMaxWidth()) {
                         Surface(
                             shape = RoundedCornerShape(14.dp),
@@ -1612,7 +1707,7 @@ fun MainScreen() {
                 }
             }
 
-            // Destination Compass Arrow with Distance Badge in meters directly above it
+            // Destination Compass Arrow with Distance Badge
             if (selectedTargetGeoPoint != null) {
                 Box(
                     modifier = Modifier
@@ -1713,8 +1808,8 @@ fun MainScreen() {
                     ) {
                         IconButton(
                             onClick = {
-                                if (!isInitialSettling && !isLoading) {
-                                    loadOrFilterData(selectedPoiCategory, searchCenterGeoPoint, radiusKm, currentLanguage, forceReload = true)
+                                if (!isInitialSettling && !isLoading && selectedPoiCategory != null) {
+                                    loadOrFilterData(selectedPoiCategory!!, searchCenterGeoPoint, radiusKm, currentLanguage, forceReload = true)
                                 }
                             },
                             enabled = !isLoading,
@@ -1766,8 +1861,8 @@ fun MainScreen() {
                 val aboutContentText = remember(currentLanguage) {
                     val sb = StringBuilder()
                     if (currentLanguage == AppLanguage.BG) {
-                        sb.append("SpotNaut е вашият интерактивен градски асоциативен спътник за бързо откриване на градски обекти около вас и упътване до тях чрез OpenStreetMap данни.\n\n")
-                        sb.append("📍 Всички обекти, които могат да се търсят:\n\n")
+                        sb.append("SpotNaut е вашият интерактивен градски спътник за бързо откриване на 100 вида градски обекта около вас и упътване до тях чрез OpenStreetMap данни.\n\n")
+                        sb.append("📍 Всички обекти по категории:\n\n")
                         MainCategory.entries.forEach { mainCat ->
                             val pois = PoiCategory.entries.filter { it.mainCategory == mainCat }
                             sb.append("${mainCat.icon} ${mainCat.labelBg}:\n")
@@ -1775,7 +1870,7 @@ fun MainScreen() {
                             sb.append("\n\n")
                         }
                     } else {
-                        sb.append("SpotNaut is your interactive companion to quickly discover nearby urban points of interest and navigate directly to them using OpenStreetMap data.\n\n")
+                        sb.append("SpotNaut is your interactive companion to quickly discover 100 types of nearby urban points of interest and navigate directly to them using OpenStreetMap data.\n\n")
                         sb.append("📍 All searchable objects by category:\n\n")
                         MainCategory.entries.forEach { mainCat ->
                             val pois = PoiCategory.entries.filter { it.mainCategory == mainCat }
