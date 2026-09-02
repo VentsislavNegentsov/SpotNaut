@@ -1487,7 +1487,7 @@ fun MainScreen() {
                             shape = RoundedCornerShape(14.dp),
                             shadowElevation = 6.dp,
                             color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
-                            modifier = Modifier.align(Alignment.CenterStart)
+                            modifier = Modifier.align(Alignment.CenterEnd)
                         ) {
                             Box {
                                 IconButton(
