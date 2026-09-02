@@ -815,7 +815,7 @@ private fun createEmojiMarkerIcon(
     return BitmapDrawable(context.resources, bitmap)
 }
 
-private fun formatSpotDetails(category: PoiCategory, tags: Map<String, String>?, lang: AppLanguage): String {
+private fun formatSpotDetails(category: PoiCategory?, tags: Map<String, String>?, lang: AppLanguage): String {
     if (tags.isNullOrEmpty()) {
         return if (lang == AppLanguage.BG) "Няма допълнителни данни" else "No additional details"
     }
@@ -837,7 +837,7 @@ private fun formatSpotDetails(category: PoiCategory, tags: Map<String, String>?,
     desc?.let { details.add(if (lang == AppLanguage.BG) "Описание: $it" else "Description: $it") }
 
     return details.ifEmpty {
-        listOf(if (lang == AppLanguage.BG) "Обект от OSM категория '${category.labelBg}'" else "Object from OSM category '${category.labelEn}'")
+        listOf(if (lang == AppLanguage.BG) "Обект от OSM базата данни" else "Object from OSM database")
     }.joinToString("\n")
 }
 
@@ -902,6 +902,8 @@ fun MainScreen() {
 
         var showMenu by remember { mutableStateOf(false) }
         var showAboutDialog by remember { mutableStateOf(false) }
+        var showSearchDialog by remember { mutableStateOf(false) }
+        var searchQueryText by remember { mutableStateOf("") }
 
         var searchCenterGeoPoint by remember { mutableStateOf(GeoPoint(42.6977, 23.3219)) }
 
@@ -941,6 +943,8 @@ fun MainScreen() {
                 val prevCat = (prevMarker.relatedObject as? PoiCategory)
                 if (prevCat != null) {
                     prevMarker.icon = createEmojiMarkerIcon(context, prevCat.icon, prevCat.colorHex, isSelected = false)
+                } else {
+                    prevMarker.icon = createEmojiMarkerIcon(context, "🔍", "#1976D2", isSelected = false)
                 }
                 prevMarker.closeInfoWindow()
             }
@@ -1220,8 +1224,12 @@ fun MainScreen() {
 
                     marker.setOnMarkerClickListener { m, _ ->
                         currentlySelectedMarker?.let { prevMarker ->
-                            val prevCat = (prevMarker.relatedObject as? PoiCategory) ?: category
-                            prevMarker.icon = createEmojiMarkerIcon(context, prevCat.icon, prevCat.colorHex, isSelected = false)
+                            val prevCat = (prevMarker.relatedObject as? PoiCategory)
+                            if (prevCat != null) {
+                                prevMarker.icon = createEmojiMarkerIcon(context, prevCat.icon, prevCat.colorHex, isSelected = false)
+                            } else {
+                                prevMarker.icon = createEmojiMarkerIcon(context, "🔍", "#1976D2", isSelected = false)
+                            }
                         }
 
                         m.icon = selectedPoiIcon
@@ -1514,7 +1522,7 @@ fun MainScreen() {
                                                 isSubCategoryListVisible = !isSubCategoryListVisible
                                             } else {
                                                 selectedMainCategory = mainCat
-                                                selectedPoiCategory = null // Default: no sub-item selected
+                                                selectedPoiCategory = null
                                                 isSubCategoryListVisible = true
                                             }
                                         },
@@ -1529,7 +1537,6 @@ fun MainScreen() {
                                 }
                             }
 
-                            // Items from selected category displayed as a multi-column grid without scrolling
                             if (isSubCategoryListVisible) {
                                 HorizontalDivider(
                                     modifier = Modifier.padding(horizontal = 2.dp),
@@ -1554,7 +1561,7 @@ fun MainScreen() {
                                                     color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                                                     onClick = {
                                                         selectedPoiCategory = poi
-                                                        isSubCategoryListVisible = false // Auto-hide grid on selection so map is clearly viewed
+                                                        isSubCategoryListVisible = false
                                                     },
                                                     modifier = Modifier.weight(1f)
                                                 ) {
@@ -1603,6 +1610,14 @@ fun MainScreen() {
                                     expanded = showMenu,
                                     onDismissRequest = { showMenu = false }
                                 ) {
+                                    DropdownMenuItem(
+                                        text = { Text(if (currentLanguage == AppLanguage.BG) "Търсене по име" else "Search by name") },
+                                        onClick = {
+                                            showMenu = false
+                                            showSearchDialog = true
+                                        }
+                                    )
+                                    HorizontalDivider()
                                     DropdownMenuItem(
                                         text = { Text(if (currentLanguage == AppLanguage.BG) "За приложението" else "About") },
                                         onClick = {
@@ -1834,7 +1849,6 @@ fun MainScreen() {
                         }
                     }
 
-                    // My Location Button
                     Surface(
                         shape = RoundedCornerShape(18.dp),
                         shadowElevation = 8.dp,
@@ -1860,6 +1874,136 @@ fun MainScreen() {
                         }
                     }
                 }
+            }
+
+            if (showSearchDialog) {
+                AlertDialog(
+                    onDismissRequest = { showSearchDialog = false },
+                    title = { Text(if (currentLanguage == AppLanguage.BG) "Търсене по име" else "Search by name") },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(
+                                value = searchQueryText,
+                                onValueChange = { searchQueryText = it },
+                                label = { Text(if (currentLanguage == AppLanguage.BG) "Въведете име (част)" else "Enter name (partial)") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                showSearchDialog = false
+                                val query = searchQueryText.trim().lowercase()
+                                if (query.isNotEmpty()) {
+                                    val elements = loadedAllElements
+                                    if (elements.isNullOrEmpty()) {
+                                        Toast.makeText(
+                                            context,
+                                            if (currentLanguage == AppLanguage.BG) "Няма заредени данни. Моля, изберете категория или изчакайте." else "No data loaded. Please select a category or wait.",
+                                            Toast.LENGTH_LONG
+                                        ).show()
+                                    } else {
+                                        deselectCurrentMarker()
+                                        mapView.overlays.clear()
+                                        mapView.overlays.add(mapEventsOverlay)
+                                        mapView.overlays.add(myLocationOverlay)
+
+                                        val centerMarker = Marker(mapView).apply {
+                                            position = searchCenterGeoPoint
+                                            title = if (currentLanguage == AppLanguage.BG) "Избрана локация" else "Selected location"
+                                            snippet = if (currentLanguage == AppLanguage.BG) "Център" else "Center"
+                                            icon = createEmojiMarkerIcon(context, "📍", "#D32F2F")
+                                            setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                                        }
+                                        mapView.overlays.add(centerMarker)
+
+                                        val radiusMeters = (radiusKm * 1000).toInt()
+                                        val circle = Polygon().apply {
+                                            points = Polygon.pointsAsCircle(searchCenterGeoPoint, radiusMeters.toDouble())
+                                            fillPaint.color = AndroidColor.argb(35, 33, 150, 243)
+                                            outlinePaint.color = AndroidColor.argb(120, 33, 150, 243)
+                                            outlinePaint.strokeWidth = 3f
+                                        }
+                                        mapView.overlays.add(circle)
+
+                                        val matchedElements = elements.filter { el ->
+                                            val nameBg = el.tags?.get("name:bg")?.lowercase() ?: ""
+                                            val nameEn = el.tags?.get("name:en")?.lowercase() ?: ""
+                                            val nameDefault = el.tags?.get("name")?.lowercase() ?: ""
+                                            nameBg.contains(query) || nameEn.contains(query) || nameDefault.contains(query)
+                                        }
+
+                                        if (matchedElements.isEmpty()) {
+                                            Toast.makeText(
+                                                context,
+                                                if (currentLanguage == AppLanguage.BG) "Няма намерени обекти за '$query'" else "No objects found for '$query'",
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                        } else {
+                                            matchedElements.forEach { element ->
+                                                val lat = element.actualLat
+                                                val lon = element.actualLon
+                                                if (lat != null && lon != null) {
+                                                    val matchedCategory = PoiCategory.entries.firstOrNull { element.belongsToCategory(it) }
+                                                    val icon = matchedCategory?.icon ?: "🔍"
+                                                    val colorHex = matchedCategory?.colorHex ?: "#1976D2"
+                                                    val title = element.tags?.get("name") ?: element.tags?.get("name:en") ?: element.tags?.get("name:bg") ?: (if (currentLanguage == AppLanguage.BG) "Търсен обект" else "Searched Object")
+
+                                                    val normalIcon = createEmojiMarkerIcon(context, icon, colorHex, isSelected = false)
+                                                    val selectedIcon = createEmojiMarkerIcon(context, icon, colorHex, isSelected = true)
+
+                                                    val marker = Marker(mapView).apply {
+                                                        position = GeoPoint(lat, lon)
+                                                        this.title = title
+                                                        snippet = formatSpotDetails(matchedCategory, element.tags, currentLanguage)
+                                                        this.icon = normalIcon
+                                                        relatedObject = matchedCategory
+                                                        setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                                                    }
+
+                                                    marker.setOnMarkerClickListener { m, _ ->
+                                                        currentlySelectedMarker?.let { prevMarker ->
+                                                            val prevCat = (prevMarker.relatedObject as? PoiCategory)
+                                                            val prevIcon = prevCat?.icon ?: "🔍"
+                                                            val prevColor = prevCat?.colorHex ?: "#1976D2"
+                                                            prevMarker.icon = createEmojiMarkerIcon(context, prevIcon, prevColor, isSelected = false)
+                                                        }
+
+                                                        m.icon = selectedIcon
+                                                        currentlySelectedMarker = m
+                                                        m.showInfoWindow()
+
+                                                        selectedTargetGeoPoint = m.position
+                                                        selectedTargetTitle = m.title
+                                                        selectedTargetDetails = m.snippet
+                                                        true
+                                                    }
+
+                                                    mapView.overlays.add(marker)
+                                                }
+                                            }
+                                            Toast.makeText(
+                                                context,
+                                                if (currentLanguage == AppLanguage.BG) "Намерени ${matchedElements.size} обекта" else "Found ${matchedElements.size} objects",
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                        }
+                                        mapView.invalidate()
+                                    }
+                                }
+                            }
+                        ) {
+                            Text(if (currentLanguage == AppLanguage.BG) "Търси" else "Search")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showSearchDialog = false }) {
+                            Text(if (currentLanguage == AppLanguage.BG) "Отказ" else "Cancel")
+                        }
+                    }
+                )
             }
 
             if (showAboutDialog) {
