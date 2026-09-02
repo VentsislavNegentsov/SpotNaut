@@ -888,7 +888,10 @@ fun MainScreen() {
         var currentLoadedCenter by remember { mutableStateOf<GeoPoint?>(null) }
         var currentLoadedRadius by remember { mutableFloatStateOf(0f) }
 
-        var currentLanguage by remember { mutableStateOf(AppLanguage.EN) }
+        val savedLang = prefs.getString("app_language", AppLanguage.BG.name) ?: AppLanguage.BG.name
+        var currentLanguage by remember {
+            mutableStateOf(try { AppLanguage.valueOf(savedLang) } catch (e: Exception) { AppLanguage.BG })
+        }
         var selectedMainCategory by remember { mutableStateOf(MainCategory.WATER_HYGIENE) }
         var selectedPoiCategory by remember { mutableStateOf<PoiCategory?>(PoiCategory.FOUNTAINS) }
         var isSubCategoryListVisible by remember { mutableStateOf(false) }
@@ -1768,6 +1771,7 @@ fun MainScreen() {
                         TextButton(
                             onClick = {
                                 currentLanguage = if (currentLanguage == AppLanguage.BG) AppLanguage.EN else AppLanguage.BG
+                                prefs.edit().putString("app_language", currentLanguage.name).apply()
                             },
                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                             modifier = Modifier.height(40.dp)
