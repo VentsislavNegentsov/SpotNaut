@@ -343,7 +343,7 @@ fun SplashScreen(onFinished: () -> Unit) {
                 Image(
                     painter = painterResource(id = R.drawable.ic_launcher_foreground),
                     contentDescription = "SpotNaut App Icon",
-                    modifier = Modifier.size(160.dp),
+                    modifier = Modifier.size(240.dp), // Increased size by 50% (from 160.dp)
                     contentScale = ContentScale.Fit
                 )
                 Spacer(modifier = Modifier.height(16.dp))
@@ -653,17 +653,17 @@ fun getManeuverText(step: OsrmStep?, lang: AppLanguage): String {
     val text = when {
         type == "arrive" -> if (lang == AppLanguage.BG) "Пристигане на целта" else "Arriving at destination"
         type == "roundabout" || type == "rotary" -> if (lang == AppLanguage.BG) "На кръговото излезте" else "At roundabout take exit"
-        modifier == "slight right" -> if (lang == AppLanguage.BG) "Леко надясно" else "Slight right"
+        modifier == "slight right" -> if (lang == AppLanguage.BG) "Завийте леко надясно" else "Bear right"
         modifier == "right" -> if (lang == AppLanguage.BG) "Завийте надясно" else "Turn right"
-        modifier == "sharp right" -> if (lang == AppLanguage.BG) "Остър десен завой" else "Sharp right"
-        modifier == "slight left" -> if (lang == AppLanguage.BG) "Леко наляво" else "Slight left"
+        modifier == "sharp right" -> if (lang == AppLanguage.BG) "Остър десен завой" else "Sharp right turn"
+        modifier == "slight left" -> if (lang == AppLanguage.BG) "Завийте леко наляво" else "Bear left"
         modifier == "left" -> if (lang == AppLanguage.BG) "Завийте наляво" else "Turn left"
-        modifier == "sharp left" -> if (lang == AppLanguage.BG) "Остър ляв завой" else "Sharp left"
+        modifier == "sharp left" -> if (lang == AppLanguage.BG) "Остър ляв завой" else "Sharp left turn"
         modifier == "uturn" -> if (lang == AppLanguage.BG) "Обратен завой" else "U-turn"
-        else -> if (lang == AppLanguage.BG) "Продължете напред" else "Continue straight"
+        else -> if (lang == AppLanguage.BG) "Продължете по" else "Continue on"
     }
 
-    return if (streetName.isBlank()) text else "$text po $streetName"
+    return if (streetName.isBlank()) text else "$text по $streetName"
 }
 
 fun updateZoomBasedOnSpeed(mapView: MapView, speedMps: Float) {
@@ -1275,14 +1275,56 @@ fun MainScreen() {
             )
 
             if (isGuidanceActive && selectedTargetGeoPoint != null) {
-                val nextStep = navigationSteps.firstOrNull { step ->
-                    val stepLoc = step.maneuver?.location
-                    if (stepLoc != null && loc != null) {
-                        val stepPoint = GeoPoint(stepLoc[1], stepLoc[0])
+                // Filter steps to find the NEXT maneuver where a STREET CHANGE or key maneuver occurs
+                val nextStep = remember(loc, navigationSteps) {
+                    if (navigationSteps.isEmpty() || loc == null) null
+                    else {
                         val userPoint = GeoPoint(loc.latitude, loc.longitude)
-                        userPoint.distanceToAsDouble(stepPoint) > 10.0
-                    } else true
-                } ?: navigationSteps.lastOrNull()
+
+                        // 1. Locate current index step on the route
+                        var currentStepIdx = 0
+                        var minDistance = Double.MAX_VALUE
+                        for (i in navigationSteps.indices) {
+                            val stepLoc = navigationSteps[i].maneuver?.location
+                            if (stepLoc != null) {
+                                val dist = userPoint.distanceToAsDouble(GeoPoint(stepLoc[1], stepLoc[0]))
+                                if (dist < minDistance) {
+                                    minDistance = dist
+                                    currentStepIdx = i
+                                }
+                            }
+                        }
+
+                        val currentStreetName = navigationSteps.getOrNull(currentStepIdx)?.name?.trim()
+
+                        // 2. Find upcoming step that transitions to a DIFFERENT street or key action
+                        var upcomingStreetChangeStep: OsrmStep? = null
+                        for (i in (currentStepIdx + 1) until navigationSteps.size) {
+                            val step = navigationSteps[i]
+                            val stepStreetName = step.name?.trim()
+                            val type = step.maneuver?.type
+
+                            val isArrive = type == "arrive"
+                            val isRoundabout = type == "roundabout" || type == "rotary"
+                            val isStreetChange = !stepStreetName.isNullOrBlank() &&
+                                    !currentStreetName.isNullOrBlank() &&
+                                    !stepStreetName.equals(currentStreetName, ignoreCase = true)
+
+                            if (isArrive || isRoundabout || isStreetChange) {
+                                upcomingStreetChangeStep = step
+                                break
+                            }
+                        }
+
+                        // Fall back to next step ahead or arrival step
+                        upcomingStreetChangeStep ?: navigationSteps.subList(currentStepIdx, navigationSteps.size).firstOrNull { step ->
+                            val stepLoc = step.maneuver?.location
+                            if (stepLoc != null) {
+                                userPoint.distanceToAsDouble(GeoPoint(stepLoc[1], stepLoc[0])) > 10.0
+                            } else false
+                        } ?: navigationSteps.lastOrNull()
+                    }
+                }
 
                 val distToNextStepMeters = remember(loc, nextStep) {
                     val stepLoc = nextStep?.maneuver?.location
@@ -1712,8 +1754,9 @@ fun MainScreen() {
 
                                     🌟 Възможности:
                                     • 10 Основни Категории с над 40 подкатегории за градско търсене.
-                                    • Горен навигационен панел с 2 реда за бърз достъп.
+                                    • Горен навигационен панел с 2 реда за бърз достяп.
                                     • Automotive Navigation с векторни стрелки за завои и кръгови кръстовища.
+                                    • Умно ориентиране само при смяна на улици.
                                     • Динамично скъсяване на маршрутната линия при движение.
                                     • Автоматично преизчисляване при отклонение.
                                     • Компас и нощен режим.
@@ -1726,6 +1769,7 @@ fun MainScreen() {
                                     • 10 Main Categories with 40+ POI subcategories.
                                     • Top 2-row horizontal navigation panel.
                                     • Automotive HUD Navigation with vector maneuver arrows.
+                                    • Smart guidance filtering only on street changes.
                                     • Dynamic route polyline trimming.
                                     • Auto re-routing when off path.
                                     • Compass and Night Mode.
