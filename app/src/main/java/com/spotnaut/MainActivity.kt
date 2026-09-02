@@ -372,37 +372,58 @@ fun SplashScreen(onFinished: () -> Unit) {
     }
 }
 
-// --- Direct Destination Arrow Indicator UI Component ---
+// --- Direct Destination Arrow Indicator UI Component with Distance Badge ---
 
 @Composable
 fun DestinationArrowIndicator(
     angle: Float,
+    distanceMeters: Int,
     modifier: Modifier = Modifier,
     arrowColor: Color = MaterialTheme.colorScheme.primary
 ) {
-    Surface(
-        modifier = modifier.size(48.dp),
-        shape = RoundedCornerShape(24.dp),
-        shadowElevation = 8.dp,
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+        modifier = modifier
     ) {
-        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-            Canvas(
-                modifier = Modifier
-                    .size(26.dp)
-                    .graphicsLayer(rotationZ = angle)
-            ) {
-                val w = size.width
-                val h = size.height
+        Surface(
+            shape = RoundedCornerShape(10.dp),
+            shadowElevation = 6.dp,
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
+        ) {
+            Text(
+                text = "${distanceMeters} m",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+            )
+        }
 
-                val arrowPath = Path().apply {
-                    moveTo(w * 0.5f, 0f)              // Arrow tip
-                    lineTo(w * 0.85f, h * 0.95f)      // Right wing
-                    lineTo(w * 0.5f, h * 0.72f)       // Inner notch
-                    lineTo(w * 0.15f, h * 0.95f)      // Left wing
-                    close()
+        Surface(
+            modifier = Modifier.size(48.dp),
+            shape = RoundedCornerShape(24.dp),
+            shadowElevation = 8.dp,
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
+        ) {
+            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                Canvas(
+                    modifier = Modifier
+                        .size(26.dp)
+                        .graphicsLayer(rotationZ = angle)
+                ) {
+                    val w = size.width
+                    val h = size.height
+
+                    val arrowPath = Path().apply {
+                        moveTo(w * 0.5f, 0f)              // Arrow tip
+                        lineTo(w * 0.85f, h * 0.95f)      // Right wing
+                        lineTo(w * 0.5f, h * 0.72f)       // Inner notch
+                        lineTo(w * 0.15f, h * 0.95f)      // Left wing
+                        close()
+                    }
+                    drawPath(arrowPath, color = arrowColor)
                 }
-                drawPath(arrowPath, color = arrowColor)
             }
         }
     }
@@ -838,7 +859,6 @@ fun MainScreen() {
         var displayRoutePoints by remember { mutableStateOf<List<GeoPoint>>(emptyList()) }
         var navigationSteps by remember { mutableStateOf<List<OsrmStep>>(emptyList()) }
 
-        // --- Fix 1: Step index tracking for guidance delay (10-15m after turn) ---
         var activeStepIndex by remember { mutableIntStateOf(0) }
         var reachedCurrentManeuverJunction by remember { mutableStateOf(false) }
 
@@ -946,7 +966,6 @@ fun MainScreen() {
                             var azimuth = Math.toDegrees(orientation[0].toDouble()).toFloat()
                             if (azimuth < 0) azimuth += 360f
 
-                            // Continuous compass update for target arrow & map
                             deviceAzimuth = azimuth
 
                             if (currentIsGuidanceActive && currentHasGpsBearing) return
@@ -1029,8 +1048,6 @@ fun MainScreen() {
                     mapView.mapOrientation = -lastGpsBearing
                 }
 
-                // --- Fix 1: Guidance Step Advancement Logic ---
-                // Delay showing the NEXT street hint until 10-15 meters after driving/walking into the new street
                 if (navigationSteps.isNotEmpty()) {
                     val nextStepIdx = activeStepIndex + 1
                     if (nextStepIdx < navigationSteps.size) {
@@ -1039,12 +1056,10 @@ fun MainScreen() {
                             val junctionPoint = GeoPoint(targetManeuverLoc[1], targetManeuverLoc[0])
                             val distToJunction = userPoint.distanceToAsDouble(junctionPoint)
 
-                            // 1. Check if user reaches/crosses the maneuver point (<15m)
                             if (distToJunction <= 15.0) {
                                 reachedCurrentManeuverJunction = true
                             }
 
-                            // 2. Only advance hint AFTER user has passed junction and moved 12-15m into the new street
                             if (reachedCurrentManeuverJunction && distToJunction >= 12.0) {
                                 activeStepIndex = nextStepIdx
                                 reachedCurrentManeuverJunction = false
@@ -1296,7 +1311,6 @@ fun MainScreen() {
             ?: myLocationOverlay.myLocation
             ?: getUserLocation(context)?.let { GeoPoint(it.latitude, it.longitude) }
 
-        // --- Fix 2: Destination Relative Angle continuously driven by phone compass ---
         val destinationRelativeAngle = remember(userGeoPoint, selectedTargetGeoPoint, deviceAzimuth) {
             if (userGeoPoint != null && selectedTargetGeoPoint != null) {
                 val results = FloatArray(2)
@@ -1310,6 +1324,13 @@ fun MainScreen() {
             } else 0f
         }
 
+        // Calculate straight line distance in meters to the target
+        val distanceToTargetMeters = remember(userGeoPoint, selectedTargetGeoPoint) {
+            if (userGeoPoint != null && selectedTargetGeoPoint != null) {
+                userGeoPoint.distanceToAsDouble(selectedTargetGeoPoint).toInt()
+            } else 0
+        }
+
         Box(modifier = Modifier.fillMaxSize()) {
             AndroidView(
                 factory = { mapView },
@@ -1317,7 +1338,6 @@ fun MainScreen() {
             )
 
             if (isGuidanceActive && selectedTargetGeoPoint != null) {
-                // Active display maneuver step based on delayed step progression
                 val activeStep = remember(activeStepIndex, navigationSteps) {
                     if (navigationSteps.isEmpty()) null
                     else navigationSteps.getOrNull(activeStepIndex + 1) ?: navigationSteps.lastOrNull()
@@ -1592,7 +1612,7 @@ fun MainScreen() {
                 }
             }
 
-            // --- Fix 2: Destination Compass Arrow continuously placed in lower right corner ---
+            // Destination Compass Arrow with Distance Badge in meters directly above it
             if (selectedTargetGeoPoint != null) {
                 Box(
                     modifier = Modifier
@@ -1602,6 +1622,7 @@ fun MainScreen() {
                 ) {
                     DestinationArrowIndicator(
                         angle = destinationRelativeAngle,
+                        distanceMeters = distanceToTargetMeters,
                         arrowColor = MaterialTheme.colorScheme.primary
                     )
                 }
@@ -1739,7 +1760,6 @@ fun MainScreen() {
                 }
             }
 
-            // --- Fix 4: About menu cleaned up with app description & full list of all searchable objects ---
             if (showAboutDialog) {
                 val scrollState = rememberScrollState()
 
