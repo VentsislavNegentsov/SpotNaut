@@ -91,7 +91,7 @@ import java.io.File
 import java.util.concurrent.TimeUnit
 import kotlin.math.abs
 
-// --- 1. Data Models & Expanded Category Taxonomy ---
+// --- 1. Data Models & Category Taxonomy ---
 
 enum class AppLanguage { BG, EN }
 
@@ -343,7 +343,7 @@ fun SplashScreen(onFinished: () -> Unit) {
                 Image(
                     painter = painterResource(id = R.drawable.ic_launcher_foreground),
                     contentDescription = "SpotNaut App Icon",
-                    modifier = Modifier.size(240.dp), // Increased size by 50% (from 160.dp)
+                    modifier = Modifier.size(240.dp),
                     contentScale = ContentScale.Fit
                 )
                 Spacer(modifier = Modifier.height(16.dp))
@@ -360,6 +360,13 @@ fun SplashScreen(onFinished: () -> Unit) {
                     fontWeight = FontWeight.Medium,
                     color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
                 )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "ventsislavnegentsov@gmail.com",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Normal,
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)
+                )
             }
         }
     }
@@ -374,15 +381,15 @@ fun DestinationArrowIndicator(
     arrowColor: Color = MaterialTheme.colorScheme.primary
 ) {
     Surface(
-        modifier = modifier.size(40.dp),
-        shape = RoundedCornerShape(18.dp),
+        modifier = modifier.size(48.dp),
+        shape = RoundedCornerShape(24.dp),
         shadowElevation = 8.dp,
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
     ) {
         Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
             Canvas(
                 modifier = Modifier
-                    .size(22.dp)
+                    .size(26.dp)
                     .graphicsLayer(rotationZ = angle)
             ) {
                 val w = size.width
@@ -401,7 +408,7 @@ fun DestinationArrowIndicator(
     }
 }
 
-// --- 2. Automotive Navigation Vector Arrow UI ---
+// --- Automotive Navigation Vector Arrow UI ---
 
 @Composable
 fun AutomotiveManeuverIcon(
@@ -590,7 +597,7 @@ fun AutomotiveManeuverIcon(
     }
 }
 
-// --- 3. Helper Functions ---
+// --- Helper Functions ---
 
 suspend fun fetchStreetRouteDetails(start: GeoPoint, target: GeoPoint): NavigationData = withContext(Dispatchers.IO) {
     try {
@@ -764,7 +771,7 @@ private fun openGoogleMaps(context: Context, target: GeoPoint, label: String) {
     }
 }
 
-// --- 4. Main Activity ---
+// --- Main Activity ---
 
 class MainActivity : ComponentActivity() {
     @SuppressLint("SourceLockedOrientationActivity")
@@ -780,7 +787,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-// --- 5. UI Screen Layout ---
+// --- UI Screen Layout ---
 
 @Composable
 fun MainScreen() {
@@ -830,6 +837,10 @@ fun MainScreen() {
         var rawRoutePoints by remember { mutableStateOf<List<GeoPoint>>(emptyList()) }
         var displayRoutePoints by remember { mutableStateOf<List<GeoPoint>>(emptyList()) }
         var navigationSteps by remember { mutableStateOf<List<OsrmStep>>(emptyList()) }
+
+        // --- Fix 1: Step index tracking for guidance delay (10-15m after turn) ---
+        var activeStepIndex by remember { mutableIntStateOf(0) }
+        var reachedCurrentManeuverJunction by remember { mutableStateOf(false) }
 
         var currentLocation by remember { mutableStateOf<Location?>(null) }
         var lastRouteFetchTime by remember { mutableLongStateOf(0L) }
@@ -935,6 +946,7 @@ fun MainScreen() {
                             var azimuth = Math.toDegrees(orientation[0].toDouble()).toFloat()
                             if (azimuth < 0) azimuth += 360f
 
+                            // Continuous compass update for target arrow & map
                             deviceAzimuth = azimuth
 
                             if (currentIsGuidanceActive && currentHasGpsBearing) return
@@ -984,6 +996,8 @@ fun MainScreen() {
         LaunchedEffect(isGuidanceActive) {
             if (isGuidanceActive) {
                 hasGpsBearingEverBeenSet = false
+                activeStepIndex = 0
+                reachedCurrentManeuverJunction = false
                 mapView.controller.zoomTo(18.5, 500L)
                 val userPoint = currentLocation?.let { GeoPoint(it.latitude, it.longitude) }
                     ?: myLocationOverlay.myLocation
@@ -992,6 +1006,8 @@ fun MainScreen() {
                 userPoint?.let { mapView.controller.animateTo(it) }
             } else {
                 hasGpsBearingEverBeenSet = false
+                activeStepIndex = 0
+                reachedCurrentManeuverJunction = false
                 mapView.mapOrientation = 0f
             }
         }
@@ -1013,6 +1029,30 @@ fun MainScreen() {
                     mapView.mapOrientation = -lastGpsBearing
                 }
 
+                // --- Fix 1: Guidance Step Advancement Logic ---
+                // Delay showing the NEXT street hint until 10-15 meters after driving/walking into the new street
+                if (navigationSteps.isNotEmpty()) {
+                    val nextStepIdx = activeStepIndex + 1
+                    if (nextStepIdx < navigationSteps.size) {
+                        val targetManeuverLoc = navigationSteps[nextStepIdx].maneuver?.location
+                        if (targetManeuverLoc != null && targetManeuverLoc.size >= 2) {
+                            val junctionPoint = GeoPoint(targetManeuverLoc[1], targetManeuverLoc[0])
+                            val distToJunction = userPoint.distanceToAsDouble(junctionPoint)
+
+                            // 1. Check if user reaches/crosses the maneuver point (<15m)
+                            if (distToJunction <= 15.0) {
+                                reachedCurrentManeuverJunction = true
+                            }
+
+                            // 2. Only advance hint AFTER user has passed junction and moved 12-15m into the new street
+                            if (reachedCurrentManeuverJunction && distToJunction >= 12.0) {
+                                activeStepIndex = nextStepIdx
+                                reachedCurrentManeuverJunction = false
+                            }
+                        }
+                    }
+                }
+
                 val now = System.currentTimeMillis()
                 if (selectedTargetGeoPoint != null && (rawRoutePoints.isEmpty() || isUserOffRoute(userPoint, rawRoutePoints))) {
                     if (now - lastRouteFetchTime > 4000) {
@@ -1020,6 +1060,8 @@ fun MainScreen() {
                         val navData = fetchStreetRouteDetails(userPoint, selectedTargetGeoPoint!!)
                         rawRoutePoints = navData.points
                         navigationSteps = navData.steps
+                        activeStepIndex = 0
+                        reachedCurrentManeuverJunction = false
                     }
                 }
 
@@ -1040,11 +1082,15 @@ fun MainScreen() {
                     rawRoutePoints = navData.points
                     displayRoutePoints = sliceRouteFromCurrentLocation(userPoint, rawRoutePoints)
                     navigationSteps = navData.steps
+                    activeStepIndex = 0
+                    reachedCurrentManeuverJunction = false
                 }
             } else {
                 rawRoutePoints = emptyList()
                 displayRoutePoints = emptyList()
                 navigationSteps = emptyList()
+                activeStepIndex = 0
+                reachedCurrentManeuverJunction = false
             }
         }
 
@@ -1250,7 +1296,8 @@ fun MainScreen() {
             ?: myLocationOverlay.myLocation
             ?: getUserLocation(context)?.let { GeoPoint(it.latitude, it.longitude) }
 
-        val destinationRelativeAngle = remember(userGeoPoint, selectedTargetGeoPoint, deviceAzimuth, lastGpsBearing, hasGpsBearingEverBeenSet) {
+        // --- Fix 2: Destination Relative Angle continuously driven by phone compass ---
+        val destinationRelativeAngle = remember(userGeoPoint, selectedTargetGeoPoint, deviceAzimuth) {
             if (userGeoPoint != null && selectedTargetGeoPoint != null) {
                 val results = FloatArray(2)
                 Location.distanceBetween(
@@ -1259,12 +1306,7 @@ fun MainScreen() {
                     results
                 )
                 val targetAbsoluteBearing = (results[1] + 360f) % 360f
-                val currentHeading = if (hasGpsBearingEverBeenSet && (loc?.hasSpeed() == true && loc.speed > 0.5f)) {
-                    lastGpsBearing
-                } else {
-                    deviceAzimuth
-                }
-                (targetAbsoluteBearing - currentHeading + 360f) % 360f
+                (targetAbsoluteBearing - deviceAzimuth + 360f) % 360f
             } else 0f
         }
 
@@ -1275,67 +1317,22 @@ fun MainScreen() {
             )
 
             if (isGuidanceActive && selectedTargetGeoPoint != null) {
-                // Filter steps to find the NEXT maneuver where a STREET CHANGE or key maneuver occurs
-                val nextStep = remember(loc, navigationSteps) {
-                    if (navigationSteps.isEmpty() || loc == null) null
-                    else {
-                        val userPoint = GeoPoint(loc.latitude, loc.longitude)
-
-                        // 1. Locate current index step on the route
-                        var currentStepIdx = 0
-                        var minDistance = Double.MAX_VALUE
-                        for (i in navigationSteps.indices) {
-                            val stepLoc = navigationSteps[i].maneuver?.location
-                            if (stepLoc != null) {
-                                val dist = userPoint.distanceToAsDouble(GeoPoint(stepLoc[1], stepLoc[0]))
-                                if (dist < minDistance) {
-                                    minDistance = dist
-                                    currentStepIdx = i
-                                }
-                            }
-                        }
-
-                        val currentStreetName = navigationSteps.getOrNull(currentStepIdx)?.name?.trim()
-
-                        // 2. Find upcoming step that transitions to a DIFFERENT street or key action
-                        var upcomingStreetChangeStep: OsrmStep? = null
-                        for (i in (currentStepIdx + 1) until navigationSteps.size) {
-                            val step = navigationSteps[i]
-                            val stepStreetName = step.name?.trim()
-                            val type = step.maneuver?.type
-
-                            val isArrive = type == "arrive"
-                            val isRoundabout = type == "roundabout" || type == "rotary"
-                            val isStreetChange = !stepStreetName.isNullOrBlank() &&
-                                    !currentStreetName.isNullOrBlank() &&
-                                    !stepStreetName.equals(currentStreetName, ignoreCase = true)
-
-                            if (isArrive || isRoundabout || isStreetChange) {
-                                upcomingStreetChangeStep = step
-                                break
-                            }
-                        }
-
-                        // Fall back to next step ahead or arrival step
-                        upcomingStreetChangeStep ?: navigationSteps.subList(currentStepIdx, navigationSteps.size).firstOrNull { step ->
-                            val stepLoc = step.maneuver?.location
-                            if (stepLoc != null) {
-                                userPoint.distanceToAsDouble(GeoPoint(stepLoc[1], stepLoc[0])) > 10.0
-                            } else false
-                        } ?: navigationSteps.lastOrNull()
-                    }
+                // Active display maneuver step based on delayed step progression
+                val activeStep = remember(activeStepIndex, navigationSteps) {
+                    if (navigationSteps.isEmpty()) null
+                    else navigationSteps.getOrNull(activeStepIndex + 1) ?: navigationSteps.lastOrNull()
                 }
 
-                val distToNextStepMeters = remember(loc, nextStep) {
-                    val stepLoc = nextStep?.maneuver?.location
-                    if (stepLoc != null && loc != null) {
+                val distToNextStepMeters = remember(loc, activeStep) {
+                    val stepLoc = activeStep?.maneuver?.location
+                    if (stepLoc != null && stepLoc.size >= 2 && loc != null) {
                         val stepPoint = GeoPoint(stepLoc[1], stepLoc[0])
                         val userPoint = GeoPoint(loc.latitude, loc.longitude)
                         userPoint.distanceToAsDouble(stepPoint).toInt()
                     } else 0
                 }
 
-                val instructionText = getManeuverText(nextStep, currentLanguage)
+                val instructionText = getManeuverText(activeStep, currentLanguage)
 
                 Surface(
                     modifier = Modifier
@@ -1356,7 +1353,7 @@ fun MainScreen() {
                             modifier = Modifier.weight(1f)
                         ) {
                             AutomotiveManeuverIcon(
-                                step = nextStep,
+                                step = activeStep,
                                 modifier = Modifier
                                     .size(50.dp)
                                     .padding(end = 10.dp)
@@ -1595,7 +1592,22 @@ fun MainScreen() {
                 }
             }
 
-            // Bottom control area
+            // --- Fix 2: Destination Compass Arrow continuously placed in lower right corner ---
+            if (selectedTargetGeoPoint != null) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .navigationBarsPadding()
+                        .padding(bottom = if (!isGuidanceActive) 230.dp else 90.dp, end = 16.dp)
+                ) {
+                    DestinationArrowIndicator(
+                        angle = destinationRelativeAngle,
+                        arrowColor = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+
+            // Bottom control bar
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -1605,13 +1617,6 @@ fun MainScreen() {
                 horizontalAlignment = Alignment.End,
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                if (isGuidanceActive && selectedTargetGeoPoint != null) {
-                    DestinationArrowIndicator(
-                        angle = destinationRelativeAngle,
-                        arrowColor = MaterialTheme.colorScheme.primary
-                    )
-                }
-
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -1734,47 +1739,47 @@ fun MainScreen() {
                 }
             }
 
+            // --- Fix 4: About menu cleaned up with app description & full list of all searchable objects ---
             if (showAboutDialog) {
                 val scrollState = rememberScrollState()
+
+                val aboutContentText = remember(currentLanguage) {
+                    val sb = StringBuilder()
+                    if (currentLanguage == AppLanguage.BG) {
+                        sb.append("SpotNaut е вашият интерактивен градски асоциативен спътник за бързо откриване на градски обекти около вас и упътване до тях чрез OpenStreetMap данни.\n\n")
+                        sb.append("📍 Всички обекти, които могат да се търсят:\n\n")
+                        MainCategory.entries.forEach { mainCat ->
+                            val pois = PoiCategory.entries.filter { it.mainCategory == mainCat }
+                            sb.append("${mainCat.icon} ${mainCat.labelBg}:\n")
+                            sb.append(pois.joinToString(", ") { it.labelBg })
+                            sb.append("\n\n")
+                        }
+                    } else {
+                        sb.append("SpotNaut is your interactive companion to quickly discover nearby urban points of interest and navigate directly to them using OpenStreetMap data.\n\n")
+                        sb.append("📍 All searchable objects by category:\n\n")
+                        MainCategory.entries.forEach { mainCat ->
+                            val pois = PoiCategory.entries.filter { it.mainCategory == mainCat }
+                            sb.append("${mainCat.icon} ${mainCat.labelEn}:\n")
+                            sb.append(pois.joinToString(", ") { it.labelEn })
+                            sb.append("\n\n")
+                        }
+                    }
+                    sb.toString().trim()
+                }
 
                 AlertDialog(
                     onDismissRequest = { showAboutDialog = false },
                     title = {
                         Column {
-                            Text("SpotNaut", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                            Text("by Ventsislav Negentsov", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.primary)
+                            Text("SpotNaut", fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                            Text("by Ventsislav Negentsov", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
+                            Text("ventsislavnegentsov@gmail.com", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
                         }
                     },
                     text = {
                         Box(modifier = Modifier.fillMaxWidth().verticalScroll(scrollState)) {
                             Text(
-                                text = if (currentLanguage == AppLanguage.BG) {
-                                    """
-                                    SpotNaut е твоят интерактивен градски помощник.
-
-                                    🌟 Възможности:
-                                    • 10 Основни Категории с над 40 подкатегории за градско търсене.
-                                    • Горен навигационен панел с 2 реда за бърз достяп.
-                                    • Automotive Navigation с векторни стрелки за завои и кръгови кръстовища.
-                                    • Умно ориентиране само при смяна на улици.
-                                    • Динамично скъсяване на маршрутната линия при движение.
-                                    • Автоматично преизчисляване при отклонение.
-                                    • Компас и нощен режим.
-                                    """.trimIndent()
-                                } else {
-                                    """
-                                    SpotNaut is your interactive urban companion.
-
-                                    🌟 Features:
-                                    • 10 Main Categories with 40+ POI subcategories.
-                                    • Top 2-row horizontal navigation panel.
-                                    • Automotive HUD Navigation with vector maneuver arrows.
-                                    • Smart guidance filtering only on street changes.
-                                    • Dynamic route polyline trimming.
-                                    • Auto re-routing when off path.
-                                    • Compass and Night Mode.
-                                    """.trimIndent()
-                                },
+                                text = aboutContentText,
                                 fontSize = 13.sp,
                                 lineHeight = 18.sp
                             )
@@ -1799,7 +1804,7 @@ fun MainScreen() {
     }
 }
 
-// --- 6. Helper Location Retrieval ---
+// --- Helper Location Retrieval ---
 
 @SuppressLint("MissingPermission")
 private fun getUserLocation(context: Context): Location? {
