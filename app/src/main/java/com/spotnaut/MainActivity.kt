@@ -1529,45 +1529,52 @@ fun MainScreen() {
                                 }
                             }
 
-                            // Items from selected category listed vertically (as a column)
+                            // Items from selected category displayed as a multi-column grid without scrolling
                             if (isSubCategoryListVisible) {
                                 HorizontalDivider(
                                     modifier = Modifier.padding(horizontal = 2.dp),
                                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
                                 )
 
-                                Surface(
+                                Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .heightIn(max = 250.dp),
-                                    color = Color.Transparent
+                                        .padding(vertical = 2.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
-                                    Column(
-                                        modifier = Modifier.verticalScroll(rememberScrollState()),
-                                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                                    ) {
-                                        currentSubCategories.forEach { poi ->
-                                            val isSelected = selectedPoiCategory == poi
-                                            Surface(
-                                                shape = RoundedCornerShape(10.dp),
-                                                color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                                onClick = {
-                                                    selectedPoiCategory = poi
-                                                    isSubCategoryListVisible = false // Auto-hide column on selection so map is clearly viewed
-                                                },
-                                                modifier = Modifier.fillMaxWidth()
-                                            ) {
-                                                Row(
-                                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                                                    verticalAlignment = Alignment.CenterVertically
+                                    currentSubCategories.chunked(2).forEach { rowItems ->
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            rowItems.forEach { poi ->
+                                                val isSelected = selectedPoiCategory == poi
+                                                Surface(
+                                                    shape = RoundedCornerShape(8.dp),
+                                                    color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                                    onClick = {
+                                                        selectedPoiCategory = poi
+                                                        isSubCategoryListVisible = false // Auto-hide grid on selection so map is clearly viewed
+                                                    },
+                                                    modifier = Modifier.weight(1f)
                                                 ) {
-                                                    Text(
-                                                        text = "${poi.icon} ${poi.label(currentLanguage)}",
-                                                        fontSize = 13.sp,
-                                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                                        color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
-                                                    )
+                                                    Box(
+                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp),
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Text(
+                                                            text = "${poi.icon} ${poi.label(currentLanguage)}",
+                                                            fontSize = 11.sp,
+                                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                            color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+                                                            textAlign = TextAlign.Center,
+                                                            maxLines = 2
+                                                        )
+                                                    }
                                                 }
+                                            }
+                                            if (rowItems.size < 2) {
+                                                Spacer(modifier = Modifier.weight(1f))
                                             }
                                         }
                                     }
