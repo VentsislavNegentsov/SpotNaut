@@ -440,6 +440,7 @@ fun SplashScreen(onFinished: () -> Unit) {
 fun DestinationArrowIndicator(
     angle: Float,
     distanceMeters: Int,
+    mode: NavigationMode,
     modifier: Modifier = Modifier,
     arrowColor: Color = MaterialTheme.colorScheme.primary
 ) {
@@ -448,6 +449,18 @@ fun DestinationArrowIndicator(
         verticalArrangement = Arrangement.spacedBy(4.dp),
         modifier = modifier
     ) {
+        Surface(
+            shape = RoundedCornerShape(8.dp),
+            shadowElevation = 4.dp,
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
+        ) {
+            Text(
+                text = if (mode == NavigationMode.CAR) "🚗" else "🚶",
+                fontSize = 14.sp,
+                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+            )
+        }
+
         Surface(
             shape = RoundedCornerShape(10.dp),
             shadowElevation = 6.dp,
@@ -1765,6 +1778,7 @@ fun MainScreen() {
                     DestinationArrowIndicator(
                         angle = destinationRelativeAngle,
                         distanceMeters = distanceToTargetMeters,
+                        mode = navMode,
                         arrowColor = MaterialTheme.colorScheme.primary
                     )
                 }
