@@ -151,6 +151,8 @@ data class NavigationData(
     val steps: List<OsrmStep>
 )
 
+enum class NavigationMode { PEDESTRIAN, CAR }
+
 enum class MainCategory(
     val labelBg: String,
     val labelEn: String,
@@ -680,9 +682,10 @@ fun AutomotiveManeuverIcon(
 
 // --- Helper Functions ---
 
-suspend fun fetchStreetRouteDetails(start: GeoPoint, target: GeoPoint): NavigationData = withContext(Dispatchers.IO) {
+suspend fun fetchStreetRouteDetails(start: GeoPoint, target: GeoPoint, mode: NavigationMode = NavigationMode.PEDESTRIAN): NavigationData = withContext(Dispatchers.IO) {
     try {
-        val url = "https://router.project-osrm.org/route/v1/foot/" +
+        val profile = if (mode == NavigationMode.CAR) "driving" else "foot"
+        val url = "https://router.project-osrm.org/route/v1/$profile/" +
                 "${start.longitude},${start.latitude};${target.longitude},${target.latitude}" +
                 "?overview=full&geometries=geojson&steps=true"
 
@@ -888,13 +891,17 @@ fun MainScreen() {
         var currentLoadedCenter by remember { mutableStateOf<GeoPoint?>(null) }
         var currentLoadedRadius by remember { mutableFloatStateOf(0f) }
 
-        val savedLang = prefs.getString("app_language", AppLanguage.BG.name) ?: AppLanguage.BG.name
+        val savedLang = prefs.getString("app_language", AppLanguage.EN.name) ?: AppLanguage.EN.name
         var currentLanguage by remember {
-            mutableStateOf(try { AppLanguage.valueOf(savedLang) } catch (e: Exception) { AppLanguage.BG })
+            mutableStateOf(try { AppLanguage.valueOf(savedLang) } catch (e: Exception) { AppLanguage.EN })
         }
         var selectedMainCategory by remember { mutableStateOf(MainCategory.WATER_HYGIENE) }
         var selectedPoiCategory by remember { mutableStateOf<PoiCategory?>(PoiCategory.FOUNTAINS) }
         var isSubCategoryListVisible by remember { mutableStateOf(false) }
+
+        var navMode by remember { mutableStateOf(NavigationMode.PEDESTRIAN) }
+        var lastFetchedMode by remember { mutableStateOf(NavigationMode.PEDESTRIAN) }
+        var overSpeedStartTime by remember { mutableLongStateOf(0L) }
 
         var radiusKm by remember { mutableStateOf(2.0f) }
 
@@ -1106,7 +1113,20 @@ fun MainScreen() {
 
                 mapView.controller.animateTo(userPoint)
                 val speedMps = if (loc.hasSpeed()) loc.speed else 0f
+                val speedKph = speedMps * 3.6f
                 updateZoomBasedOnSpeed(mapView, speedMps)
+
+                // Automatic navigation mode switching: PEDESTRIAN -> CAR if > 5 km/h for 3s
+                val nowTime = System.currentTimeMillis()
+                if (speedKph > 5.0f && navMode == NavigationMode.PEDESTRIAN) {
+                    if (overSpeedStartTime == 0L) {
+                        overSpeedStartTime = nowTime
+                    } else if (nowTime - overSpeedStartTime > 3000L) {
+                        navMode = NavigationMode.CAR
+                    }
+                } else {
+                    overSpeedStartTime = 0L
+                }
 
                 if (loc.hasBearing() && speedMps > 0.5f) {
                     lastGpsBearing = loc.bearing
@@ -1137,10 +1157,11 @@ fun MainScreen() {
                 }
 
                 val now = System.currentTimeMillis()
-                if (selectedTargetGeoPoint != null && (rawRoutePoints.isEmpty() || isUserOffRoute(userPoint, rawRoutePoints))) {
+                if (selectedTargetGeoPoint != null && (rawRoutePoints.isEmpty() || isUserOffRoute(userPoint, rawRoutePoints) || navMode != lastFetchedMode)) {
                     if (now - lastRouteFetchTime > 4000) {
                         lastRouteFetchTime = now
-                        val navData = fetchStreetRouteDetails(userPoint, selectedTargetGeoPoint!!)
+                        lastFetchedMode = navMode
+                        val navData = fetchStreetRouteDetails(userPoint, selectedTargetGeoPoint!!, navMode)
                         rawRoutePoints = navData.points
                         navigationSteps = navData.steps
                         activeStepIndex = 0
@@ -1161,12 +1182,13 @@ fun MainScreen() {
                     ?: getUserLocation(context)?.let { GeoPoint(it.latitude, it.longitude) }
 
                 if (userPoint != null) {
-                    val navData = fetchStreetRouteDetails(userPoint, selectedTargetGeoPoint!!)
+                    val navData = fetchStreetRouteDetails(userPoint, selectedTargetGeoPoint!!, navMode)
                     rawRoutePoints = navData.points
                     displayRoutePoints = sliceRouteFromCurrentLocation(userPoint, rawRoutePoints)
                     navigationSteps = navData.steps
                     activeStepIndex = 0
                     reachedCurrentManeuverJunction = false
+                    lastFetchedMode = navMode
                 }
             } else {
                 rawRoutePoints = emptyList()
