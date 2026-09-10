@@ -2114,7 +2114,11 @@ fun MainScreen() {
 
 @SuppressLint("MissingPermission")
 private fun getUserLocation(context: Context): Location? {
-    val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-    return locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
-        ?: locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+    try {
+        val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        return locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+            ?: locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+    } catch (e: SecurityException) {
+        return null
+    }
 }
